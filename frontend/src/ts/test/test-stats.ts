@@ -222,10 +222,22 @@ export function calculateBurst(): number {
 }
 
 export function calculateAccuracy(): number {
-  const acc =
-    (TestInput.accuracy.correct /
-      (TestInput.accuracy.correct + TestInput.accuracy.incorrect)) *
-    100;
+  const resultInput = TestInput.input.history.join(" ");
+  const resultOutput = TestWords.words.get().join(" ");
+  let mismatched = 0;
+
+  const minLength = Math.min(resultOutput.length, resultInput.length);
+  for (let i = 0; i < minLength; i++) {
+    const c1 = resultInput.charAt(i);
+    const c2 = resultOutput.charAt(i);
+    if (c1 !== c2) {
+      mismatched += 1;
+    }
+  }
+
+  const acc = ((minLength - mismatched) / minLength) * 100;
+  console.log(mismatched);
+  console.log("the accuracy is ", acc);
   return isNaN(acc) ? 100 : acc;
 }
 
