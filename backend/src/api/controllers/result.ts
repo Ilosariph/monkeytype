@@ -56,7 +56,7 @@ import {
 } from "@monkeytype/contracts/schemas/results";
 import { Mode } from "@monkeytype/contracts/schemas/shared";
 
-try {
+/*try {
   if (!anticheatImplemented()) throw new Error("undefined");
   Logger.success("Anticheat module loaded");
 } catch (e) {
@@ -70,7 +70,7 @@ try {
     );
     process.exit(1);
   }
-}
+}*/
 
 export async function getResults(
   req: MonkeyTypes.Request2<GetResultsQuery>
