@@ -1,3 +1,6 @@
+# About this fork
+This fork is a monkeytype version optimized for chording on characorder devices. It has no anticheat limiting you to 300 WPM and the accuracy is calculated differently.
+
 [![](https://github.com/monkeytypegame/monkeytype/blob/master/frontend/static/images/githubbanner2.png?raw=true)](https://monkeytype.com/)
 <br />
 
