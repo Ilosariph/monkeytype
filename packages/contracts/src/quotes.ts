@@ -3,7 +3,7 @@ import { z } from "zod";
 
 import {
   CommonResponses,
-  EndpointMetadata,
+  meta,
   MonkeyResponseSchema,
   responseWithData,
   responseWithNullableData,
@@ -96,6 +96,10 @@ export const quotesContract = c.router(
       responses: {
         200: GetQuotesResponseSchema,
       },
+      metadata: meta({
+        rateLimit: "newQuotesGet",
+        requirePermission: "quoteMod",
+      }),
     },
     isSubmissionEnabled: {
       summary: "is submission enabled",
@@ -105,9 +109,10 @@ export const quotesContract = c.router(
       responses: {
         200: IsSubmissionEnabledResponseSchema,
       },
-      metadata: {
+      metadata: meta({
         authenticationOptions: { isPublic: true },
-      } as EndpointMetadata,
+        rateLimit: "newQuotesIsSubmissionEnabled",
+      }),
     },
     add: {
       summary: "submit quote",
@@ -118,6 +123,9 @@ export const quotesContract = c.router(
       responses: {
         200: MonkeyResponseSchema,
       },
+      metadata: meta({
+        rateLimit: "newQuotesAdd",
+      }),
     },
     approveSubmission: {
       summary: "submit quote",
@@ -128,6 +136,10 @@ export const quotesContract = c.router(
       responses: {
         200: ApproveQuoteResponseSchema,
       },
+      metadata: meta({
+        rateLimit: "newQuotesAction",
+        requirePermission: "quoteMod",
+      }),
     },
     rejectSubmission: {
       summary: "reject quote",
@@ -138,6 +150,10 @@ export const quotesContract = c.router(
       responses: {
         200: MonkeyResponseSchema,
       },
+      metadata: meta({
+        rateLimit: "newQuotesAction",
+        requirePermission: "quoteMod",
+      }),
     },
     getRating: {
       summary: "get rating",
@@ -148,6 +164,9 @@ export const quotesContract = c.router(
       responses: {
         200: GetQuoteRatingResponseSchema,
       },
+      metadata: meta({
+        rateLimit: "quoteRatingsGet",
+      }),
     },
     addRating: {
       summary: "add rating",
@@ -158,6 +177,9 @@ export const quotesContract = c.router(
       responses: {
         200: MonkeyResponseSchema,
       },
+      metadata: meta({
+        rateLimit: "quoteRatingsSubmit",
+      }),
     },
     report: {
       summary: "report quote",
@@ -168,14 +190,18 @@ export const quotesContract = c.router(
       responses: {
         200: MonkeyResponseSchema,
       },
+      metadata: meta({
+        rateLimit: "quoteReportSubmit",
+        requirePermission: "canReport",
+      }),
     },
   },
   {
     pathPrefix: "/quotes",
     strictStatusCodes: true,
-    metadata: {
+    metadata: meta({
       openApiTags: "quotes",
-    } as EndpointMetadata,
+    }),
     commonResponses: CommonResponses,
   }
 );
