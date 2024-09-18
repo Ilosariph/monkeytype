@@ -8,6 +8,7 @@ import {
   Mode2,
   PersonalBests,
 } from "@monkeytype/contracts/schemas/shared";
+import { ZodError, ZodSchema } from "zod";
 
 export function kogasa(cov: number): number {
   return (
@@ -483,21 +484,40 @@ export async function downloadResultsCSV(
   Loader.hide();
 }
 
-export function createErrorMessage(error: unknown, message: string): string {
+export function getErrorMessage(error: unknown): string | undefined {
+  let message = "";
+
   if (error instanceof Error) {
-    return `${message}: ${error.message}`;
+    message = error.message;
+  } else if (
+    error !== null &&
+    typeof error === "object" &&
+    "message" in error &&
+    (typeof error.message === "string" || typeof error.message === "number")
+  ) {
+    message = `${error.message}`;
+  } else if (typeof error === "string") {
+    message = error;
+  } else if (typeof error === "number") {
+    message = `${error}`;
   }
 
-  if (error instanceof Object && "message" in error) {
-    const objectWithMessage = error as { message?: string };
-
-    if (objectWithMessage?.message !== undefined) {
-      return `${message}: ${objectWithMessage.message}`;
-    }
+  if (message === "") {
+    return undefined;
   }
 
-  console.error("Unknown error", error);
-  return `${message}: Unknown error`;
+  return message;
+}
+
+export function createErrorMessage(error: unknown, message: string): string {
+  const errorMessage = getErrorMessage(error);
+
+  if (errorMessage === undefined) {
+    console.error("Could not get error message from error", error);
+    return `${message}: Unknown error`;
+  }
+
+  return `${message}: ${errorMessage}`;
 }
 
 export function isElementVisible(query: string): boolean {
@@ -682,6 +702,52 @@ export function updateTitle(title?: string): void {
 
 export function isObject(obj: unknown): obj is Record<string, unknown> {
   return typeof obj === "object" && !Array.isArray(obj) && obj !== null;
+}
+
+/**
+ * Parse a JSON string into an object and validate it against a schema
+ * @param input  JSON string
+ * @param schema  Zod schema to validate the JSON against
+ * @returns  The parsed JSON object
+ */
+export function parseJsonWithSchema<T>(input: string, schema: ZodSchema<T>): T {
+  try {
+    const jsonParsed = JSON.parse(input) as unknown;
+    const zodParsed = schema.parse(jsonParsed);
+    return zodParsed;
+  } catch (error) {
+    if (error instanceof ZodError) {
+      throw new Error(error.errors.map((err) => err.message).join("\n"));
+    } else {
+      throw error;
+    }
+  }
+}
+
+export function deepClone<T>(obj: T[]): T[];
+export function deepClone<T extends object>(obj: T): T;
+export function deepClone<T>(obj: T): T;
+export function deepClone<T>(obj: T | T[]): T | T[] {
+  // Check if the value is a primitive (not an object or array)
+  if (obj === null || typeof obj !== "object") {
+    return obj;
+  }
+
+  // Handle arrays
+  if (Array.isArray(obj)) {
+    return obj.map((item) => deepClone(item));
+  }
+
+  // Handle objects
+  const clonedObj = {} as { [K in keyof T]: T[K] };
+
+  for (const key in obj) {
+    if (Object.prototype.hasOwnProperty.call(obj, key)) {
+      clonedObj[key] = deepClone((obj as { [K in keyof T]: T[K] })[key]);
+    }
+  }
+
+  return clonedObj;
 }
 
 // DO NOT ALTER GLOBAL OBJECTSONSTRUCTOR, IT WILL BREAK RESULT HASHES
