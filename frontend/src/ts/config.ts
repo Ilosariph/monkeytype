@@ -24,11 +24,11 @@ import {
 } from "./utils/misc";
 import * as ConfigSchemas from "@monkeytype/contracts/schemas/configs";
 import { Config } from "@monkeytype/contracts/schemas/configs";
-import { roundTo1 } from "./utils/numbers";
 import { Mode, ModeSchema } from "@monkeytype/contracts/schemas/shared";
 import { Language, LanguageSchema } from "@monkeytype/contracts/schemas/util";
 import { LocalStorageWithSchema } from "./utils/local-storage-with-schema";
 import { migrateConfig } from "./utils/config";
+import { roundTo1 } from "@monkeytype/util/numbers";
 
 const configLS = new LocalStorageWithSchema({
   key: "config",
@@ -1831,7 +1831,7 @@ export function setCustomBackground(
 }
 
 export async function setCustomLayoutfluid(
-  value: MonkeyTypes.CustomLayoutFluidSpaces,
+  value: ConfigSchemas.CustomLayoutFluid,
   nosave?: boolean
 ): Promise<boolean> {
   const trimmed = value.trim();
@@ -1932,7 +1932,7 @@ export function setBurstHeatmap(value: boolean, nosave?: boolean): boolean {
 }
 
 export async function apply(
-  configToApply: Config | MonkeyTypes.ConfigChanges
+  configToApply: Config | Partial<Config>
 ): Promise<void> {
   if (configToApply === undefined) return;
 
@@ -2064,8 +2064,8 @@ export async function loadFromLocalStorage(): Promise<void> {
   loadDone();
 }
 
-export function getConfigChanges(): MonkeyTypes.ConfigChanges {
-  const configChanges: MonkeyTypes.ConfigChanges = {};
+export function getConfigChanges(): Partial<Config> {
+  const configChanges: Partial<Config> = {};
   typedKeys(config)
     .filter((key) => {
       return config[key] !== DefaultConfig[key];

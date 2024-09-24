@@ -19,6 +19,14 @@ import {
   RequestAuthenticationOptions,
 } from "@monkeytype/contracts/schemas/api";
 import { Configuration } from "@monkeytype/contracts/schemas/configuration";
+import { getMetadata } from "./utility";
+import { TsRestRequestWithContext } from "../api/types";
+
+export type DecodedToken = {
+  type: "Bearer" | "ApeKey" | "None" | "GithubWebhook";
+  uid: string;
+  email: string;
+};
 
 const DEFAULT_OPTIONS: RequestAuthenticationOptions = {
   isGithubWebhook: false,
@@ -27,11 +35,6 @@ const DEFAULT_OPTIONS: RequestAuthenticationOptions = {
   requireFreshToken: false,
   isPublicOnDev: false,
 };
-
-export type TsRestRequestWithCtx = {
-  ctx: Readonly<MonkeyTypes.Context>;
-} & TsRestRequest &
-  ExpressRequest;
 
 /**
  * Authenticate request based on the auth settings of the route.
@@ -42,18 +45,18 @@ export function authenticateTsRestRequest<
   T extends AppRouter | AppRoute
 >(): TsRestRequestHandler<T> {
   return async (
-    req: TsRestRequestWithCtx,
+    req: TsRestRequestWithContext,
     _res: Response,
     next: NextFunction
   ): Promise<void> => {
     const options = {
       ...DEFAULT_OPTIONS,
-      ...((req.tsRestRoute["metadata"]?.["authenticationOptions"] ??
+      ...((getMetadata(req)["authenticationOptions"] ??
         {}) as EndpointMetadata),
     };
 
     const startTime = performance.now();
-    let token: MonkeyTypes.DecodedToken;
+    let token: DecodedToken;
     let authType = "None";
 
     const isPublic =
@@ -130,7 +133,7 @@ async function authenticateWithAuthHeader(
   authHeader: string,
   configuration: Configuration,
   options: RequestAuthenticationOptions
-): Promise<MonkeyTypes.DecodedToken> {
+): Promise<DecodedToken> {
   const [authScheme, token] = authHeader.split(" ");
 
   if (token === undefined) {
@@ -162,7 +165,7 @@ async function authenticateWithAuthHeader(
 async function authenticateWithBearerToken(
   token: string,
   options: RequestAuthenticationOptions
-): Promise<MonkeyTypes.DecodedToken> {
+): Promise<DecodedToken> {
   try {
     const decodedToken = await verifyIdToken(
       token,
@@ -188,6 +191,7 @@ async function authenticateWithBearerToken(
       email: decodedToken.email ?? "",
     };
   } catch (error) {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
     const errorCode = error?.errorInfo?.code as string | undefined;
 
     if (errorCode?.includes("auth/id-token-expired")) {
@@ -224,7 +228,7 @@ async function authenticateWithApeKey(
   key: string,
   configuration: Configuration,
   options: RequestAuthenticationOptions
-): Promise<MonkeyTypes.DecodedToken> {
+): Promise<DecodedToken> {
   const isPublic =
     options.isPublic || (options.isPublicOnDev && isDevEnvironment());
 
@@ -284,9 +288,7 @@ async function authenticateWithApeKey(
   }
 }
 
-async function authenticateWithUid(
-  token: string
-): Promise<MonkeyTypes.DecodedToken> {
+async function authenticateWithUid(token: string): Promise<DecodedToken> {
   if (!isDevEnvironment()) {
     throw new MonkeyError(401, "Baerer type uid is not supported");
   }
@@ -304,9 +306,9 @@ async function authenticateWithUid(
 }
 
 export function authenticateGithubWebhook(
-  req: TsRestRequest,
+  req: TsRestRequestWithContext,
   authHeader: string | string[] | undefined
-): MonkeyTypes.DecodedToken {
+): DecodedToken {
   try {
     const webhookSecret = process.env["GITHUB_WEBHOOK_SECRET"];
 

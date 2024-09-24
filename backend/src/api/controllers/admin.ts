@@ -11,16 +11,17 @@ import {
   ToggleBanRequest,
   ToggleBanResponse,
 } from "@monkeytype/contracts/admin";
-import MonkeyError from "../../utils/error";
+import MonkeyError, { getErrorMessage } from "../../utils/error";
 import { Configuration } from "@monkeytype/contracts/schemas/configuration";
 import { addImportantLog } from "../../dal/logs";
+import { MonkeyRequest } from "../types";
 
-export async function test(_req: MonkeyTypes.Request): Promise<MonkeyResponse> {
+export async function test(_req: MonkeyRequest): Promise<MonkeyResponse> {
   return new MonkeyResponse("OK", null);
 }
 
 export async function toggleBan(
-  req: MonkeyTypes.Request<undefined, ToggleBanRequest>
+  req: MonkeyRequest<undefined, ToggleBanRequest>
 ): Promise<ToggleBanResponse> {
   const { uid } = req.body;
 
@@ -42,7 +43,7 @@ export async function toggleBan(
 }
 
 export async function acceptReports(
-  req: MonkeyTypes.Request<undefined, AcceptReportsRequest>
+  req: MonkeyRequest<undefined, AcceptReportsRequest>
 ): Promise<MonkeyResponse> {
   await handleReports(
     req.body.reports.map((it) => ({ ...it })),
@@ -53,7 +54,7 @@ export async function acceptReports(
 }
 
 export async function rejectReports(
-  req: MonkeyTypes.Request<undefined, RejectReportsRequest>
+  req: MonkeyRequest<undefined, RejectReportsRequest>
 ): Promise<MonkeyResponse> {
   await handleReports(
     req.body.reports.map((it) => ({ ...it })),
@@ -117,14 +118,17 @@ export async function handleReports(
       if (e instanceof MonkeyError) {
         throw new MonkeyError(e.status, e.message);
       } else {
-        throw new MonkeyError(500, "Error handling reports: " + e.message);
+        throw new MonkeyError(
+          500,
+          "Error handling reports: " + getErrorMessage(e)
+        );
       }
     }
   }
 }
 
 export async function sendForgotPasswordEmail(
-  req: MonkeyTypes.Request<undefined, SendForgotPasswordEmailRequest>
+  req: MonkeyRequest<undefined, SendForgotPasswordEmailRequest>
 ): Promise<MonkeyResponse> {
   const { email } = req.body;
   await authSendForgotPasswordEmail(email);

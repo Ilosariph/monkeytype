@@ -1,7 +1,7 @@
 import * as db from "../init/db";
 import { v4 as uuidv4 } from "uuid";
 import Logger from "../utils/logger";
-import MonkeyError from "../utils/error";
+import MonkeyError, { getErrorMessage } from "../utils/error";
 import { incrementBadAuth } from "./rate-limit";
 import type { NextFunction, Response } from "express";
 import { isCustomCode } from "../constants/monkey-status-codes";
@@ -14,6 +14,7 @@ import { isDevEnvironment } from "../utils/misc";
 import { ObjectId } from "mongodb";
 import { version } from "../version";
 import { addLog } from "../dal/logs";
+import { ExpressRequestWithContext } from "../api/types";
 
 type DBError = {
   _id: ObjectId;
@@ -34,7 +35,7 @@ type ErrorData = {
 
 async function errorHandlingMiddleware(
   error: Error,
-  req: MonkeyTypes.ExpressRequestWithContext,
+  req: ExpressRequestWithContext,
   res: Response,
   _next: NextFunction
 ): Promise<void> {
@@ -92,7 +93,7 @@ async function errorHandlingMiddleware(
         });
       } catch (e) {
         Logger.error("Logging to db failed.");
-        Logger.error(e.message as string);
+        Logger.error(getErrorMessage(e) ?? "Unknown error");
         console.error(e);
       }
     } else {
@@ -107,7 +108,7 @@ async function errorHandlingMiddleware(
     return;
   } catch (e) {
     Logger.error("Error handling middleware failed.");
-    Logger.error(e.message as string);
+    Logger.error(getErrorMessage(e) ?? "Unknown error");
     console.error(e);
   }
 

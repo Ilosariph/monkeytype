@@ -11,7 +11,6 @@ import * as Replay from "./replay";
 import * as Misc from "../utils/misc";
 import * as Strings from "../utils/strings";
 import * as JSONData from "../utils/json-data";
-import * as Numbers from "../utils/numbers";
 import { blendTwoHexColors } from "../utils/colors";
 import { get as getTypingSpeedUnit } from "../utils/typing-speed-units";
 import * as SlowTimer from "../states/slow-timer";
@@ -20,7 +19,6 @@ import * as ConfigEvent from "../observables/config-event";
 import * as Hangul from "hangul-js";
 import { format } from "date-fns/format";
 import { isAuthenticated } from "../firebase";
-import { skipXpBreakdown } from "../elements/account-button";
 import * as FunboxList from "./funbox/funbox-list";
 import { debounce } from "throttle-debounce";
 import * as ResultWordHighlight from "../elements/result-word-highlight";
@@ -32,6 +30,7 @@ import {
   TimerColor,
   TimerOpacity,
 } from "@monkeytype/contracts/schemas/configs";
+import { convertRemToPixels } from "../utils/numbers";
 
 async function gethtml2canvas(): Promise<typeof import("html2canvas").default> {
   return (await import("html2canvas")).default;
@@ -114,7 +113,7 @@ async function joinOverlappingHints(
 }
 
 const debouncedZipfCheck = debounce(250, async () => {
-  const supports = await Misc.checkIfLanguageSupportsZipf(Config.language);
+  const supports = await JSONData.checkIfLanguageSupportsZipf(Config.language);
   if (supports === "no") {
     Notifications.add(
       `${Strings.capitalizeFirstLetter(
@@ -457,7 +456,7 @@ export async function updateWordsInputPosition(initial = false): Promise<void> {
   const activeWordMargin =
     parseInt(computed.marginTop) + parseInt(computed.marginBottom);
 
-  const letterHeight = Numbers.convertRemToPixels(Config.fontSize);
+  const letterHeight = convertRemToPixels(Config.fontSize);
   const targetTop =
     activeWord.offsetTop + letterHeight / 2 - el.offsetHeight / 2 + 1; //+1 for half of border
 
@@ -518,7 +517,7 @@ function updateWordsHeight(force = false): void {
     }
     $(".outOfFocusWarning").css(
       "margin-top",
-      wordHeight + Numbers.convertRemToPixels(1) / 2 + "px"
+      wordHeight + convertRemToPixels(1) / 2 + "px"
     );
   } else {
     let finalWordsHeight: number, finalWrapperHeight: number;
@@ -578,7 +577,7 @@ function updateWordsHeight(force = false): void {
       $("#wordsWrapper").css("height", finalWrapperHeight + "px");
       $(".outOfFocusWarning").css(
         "margin-top",
-        finalWrapperHeight / 2 - Numbers.convertRemToPixels(1) / 2 + "px"
+        finalWrapperHeight / 2 - convertRemToPixels(1) / 2 + "px"
       );
     }, 0);
   }
@@ -699,8 +698,8 @@ export async function screenshot(): Promise<void> {
     true
   ) as number; /*clientHeight/offsetHeight from div#target*/
   try {
-    const paddingX = Numbers.convertRemToPixels(2);
-    const paddingY = Numbers.convertRemToPixels(2);
+    const paddingX = convertRemToPixels(2);
+    const paddingY = convertRemToPixels(2);
 
     const canvas = await (
       await gethtml2canvas()
@@ -1617,12 +1616,6 @@ $(".pageTest").on("click", "#showWordHistoryButton", () => {
 
 $("#wordsWrapper").on("click", () => {
   focusWords();
-});
-
-$(document).on("keypress", () => {
-  if (resultVisible) {
-    skipXpBreakdown();
-  }
 });
 
 ConfigEvent.subscribe((key, value) => {

@@ -1,11 +1,11 @@
 import { Configuration } from "@monkeytype/contracts/schemas/configuration";
 import * as RedisClient from "../init/redis";
 import LaterQueue from "../queues/later-queue";
-import { getCurrentWeekTimestamp } from "../utils/misc";
 import {
   XpLeaderboardEntry,
   XpLeaderboardRank,
 } from "@monkeytype/contracts/schemas/leaderboards";
+import { getCurrentWeekTimestamp } from "@monkeytype/util/date-and-time";
 
 type AddResultOpts = {
   entry: Pick<
@@ -89,7 +89,8 @@ export class WeeklyXpLeaderboard {
 
     const currentEntryTimeTypedSeconds =
       currentEntry !== null
-        ? (JSON.parse(currentEntry)?.timeTypedSeconds as number | undefined)
+        ? (JSON.parse(currentEntry) as { timeTypedSeconds: number | undefined })
+            ?.timeTypedSeconds
         : undefined;
 
     const totalTimeTypedSeconds =

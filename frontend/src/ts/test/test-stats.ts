@@ -5,7 +5,7 @@ import * as TestInput from "./test-input";
 import * as TestWords from "./test-words";
 import * as FunboxList from "./funbox/funbox-list";
 import * as TestState from "./test-state";
-import * as Numbers from "../utils/numbers";
+import * as Numbers from "@monkeytype/util/numbers";
 import {
   CompletedEvent,
   IncompleteTest,
@@ -142,9 +142,10 @@ export function calculateTestSeconds(now?: number): number {
   }
 }
 
-export function calculateWpmAndRaw(
-  withDecimalPoints?: true
-): MonkeyTypes.WpmAndRaw {
+export function calculateWpmAndRaw(withDecimalPoints?: true): {
+  wpm: number;
+  raw: number;
+} {
   const testSeconds = calculateTestSeconds(
     TestState.isActive ? performance.now() : end
   );

@@ -2,7 +2,6 @@ import * as Notifications from "../../elements/notifications";
 import * as Misc from "../../utils/misc";
 import * as JSONData from "../../utils/json-data";
 import * as GetText from "../../utils/generate";
-import * as Numbers from "../../utils/numbers";
 import * as Arrays from "../../utils/arrays";
 import * as Strings from "../../utils/strings";
 import * as ManualRestart from "../manual-restart-tracker";
@@ -23,11 +22,12 @@ import {
   areFunboxesCompatible,
   checkFunboxForcedConfigs,
 } from "./funbox-validation";
-import { Wordset } from "../wordset";
+import { FunboxWordsFrequency, Wordset } from "../wordset";
 import * as LayoutfluidFunboxTimer from "./layoutfluid-funbox-timer";
 import * as DDR from "../../utils/ddr";
 import { HighlightMode } from "@monkeytype/contracts/schemas/configs";
 import { Mode } from "@monkeytype/contracts/schemas/shared";
+import { randomIntFromRange } from "@monkeytype/util/numbers";
 
 const prefixSize = 2;
 
@@ -49,7 +49,7 @@ class CharDistribution {
   }
 
   public randomChar(): string {
-    const randomIndex = Numbers.randomIntFromRange(0, this.count - 1);
+    const randomIndex = randomIntFromRange(0, this.count - 1);
     let runningCount = 0;
     for (const [char, charCount] of Object.entries(this.chars)) {
       runningCount += charCount;
@@ -335,12 +335,12 @@ FunboxList.setFunboxFunctions("58008", {
       if (Math.random() < 0.5) {
         word = Strings.replaceCharAt(
           word,
-          Numbers.randomIntFromRange(1, word.length - 2),
+          randomIntFromRange(1, word.length - 2),
           "."
         );
       }
       if (Math.random() < 0.75) {
-        const index = Numbers.randomIntFromRange(1, word.length - 2);
+        const index = randomIntFromRange(1, word.length - 2);
         if (
           word[index - 1] !== "." &&
           word[index + 1] !== "." &&
@@ -432,13 +432,13 @@ FunboxList.setFunboxFunctions("nospace", {
 });
 
 FunboxList.setFunboxFunctions("poetry", {
-  async pullSection(): Promise<Misc.Section | false> {
+  async pullSection(): Promise<JSONData.Section | false> {
     return getPoem();
   },
 });
 
 FunboxList.setFunboxFunctions("wikipedia", {
-  async pullSection(lang?: string): Promise<Misc.Section | false> {
+  async pullSection(lang?: string): Promise<JSONData.Section | false> {
     return getSection((lang ?? "") || "english");
   },
 });
@@ -512,7 +512,7 @@ FunboxList.setFunboxFunctions("hexadecimal", {
 });
 
 FunboxList.setFunboxFunctions("zipf", {
-  getWordsFrequencyMode(): MonkeyTypes.FunboxWordsFrequency {
+  getWordsFrequencyMode(): FunboxWordsFrequency {
     return "zipf";
   },
 });

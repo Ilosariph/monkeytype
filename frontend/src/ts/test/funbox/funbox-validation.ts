@@ -1,8 +1,9 @@
 import * as FunboxList from "./funbox-list";
 import * as Notifications from "../../elements/notifications";
-import * as Arrays from "../../utils/arrays";
 import * as Strings from "../../utils/strings";
 import { Config, ConfigValue } from "@monkeytype/contracts/schemas/configs";
+import { intersect } from "@monkeytype/util/arrays";
+import { FunboxForcedConfig, FunboxMetadata } from "../../utils/json-data";
 
 export function checkFunboxForcedConfigs(
   key: string,
@@ -43,7 +44,7 @@ export function checkFunboxForcedConfigs(
           if (forcedConfigs[key] === undefined) {
             forcedConfigs[key] = fb.forcedConfig[key] as ConfigValue[];
           } else {
-            forcedConfigs[key] = Arrays.intersect(
+            forcedConfigs[key] = intersect(
               forcedConfigs[key],
               fb.forcedConfig[key] as ConfigValue[],
               true
@@ -79,7 +80,7 @@ export function canSetConfigWithCurrentFunboxes(
 ): boolean {
   let errorCount = 0;
   if (key === "mode") {
-    let fb: MonkeyTypes.FunboxMetadata[] = [];
+    let fb: FunboxMetadata[] = [];
     fb = fb.concat(
       FunboxList.get(funbox).filter(
         (f) =>
@@ -295,14 +296,14 @@ export function areFunboxesCompatible(
     funboxesToCheck.filter((f) => f.functions?.isCharCorrect).length <= 1;
   const oneCharReplacerMax =
     funboxesToCheck.filter((f) => f.functions?.getWordHtml).length <= 1;
-  const allowedConfig = {} as MonkeyTypes.FunboxForcedConfig;
+  const allowedConfig = {} as FunboxForcedConfig;
   let noConfigConflicts = true;
   for (const f of funboxesToCheck) {
     if (!f.forcedConfig) continue;
     for (const key in f.forcedConfig) {
       if (allowedConfig[key]) {
         if (
-          Arrays.intersect(
+          intersect(
             allowedConfig[key],
             f.forcedConfig[key] as ConfigValue[],
             true

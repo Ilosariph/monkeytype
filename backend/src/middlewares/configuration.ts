@@ -1,5 +1,4 @@
 import type { Response, NextFunction } from "express";
-import { TsRestRequestWithCtx } from "./auth";
 import { TsRestRequestHandler } from "@ts-rest/express";
 import { EndpointMetadata } from "@monkeytype/contracts/schemas/api";
 import MonkeyError from "../utils/error";
@@ -8,18 +7,19 @@ import {
   ConfigurationPath,
   RequireConfiguration,
 } from "@monkeytype/contracts/require-configuration/index";
+import { getMetadata } from "./utility";
+import { TsRestRequestWithContext } from "../api/types";
+import { AppRoute, AppRouter } from "@ts-rest/core";
 
 export function verifyRequiredConfiguration<
   T extends AppRouter | AppRoute
 >(): TsRestRequestHandler<T> {
   return async (
-    req: TsRestRequestWithCtx,
+    req: TsRestRequestWithContext,
     _res: Response,
     next: NextFunction
   ): Promise<void> => {
-    const requiredConfigurations = getRequireConfigurations(
-      req.tsRestRoute["metadata"] as EndpointMetadata | undefined
-    );
+    const requiredConfigurations = getRequireConfigurations(getMetadata(req));
 
     if (requiredConfigurations === undefined) {
       next();
