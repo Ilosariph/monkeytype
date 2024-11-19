@@ -202,7 +202,7 @@
   },
   {
     "name": "croatian",
-    "languages": ["croatian"]
+    "languages": ["croatian", "croatian_1k"]
   },
   {
     "name": "dutch",
@@ -539,6 +539,10 @@
     "languages": ["klingon", "klingon_1k"]
   },
   {
+    "name": "quenya",
+    "languages": ["quenya"]
+  },
+  {
     "name": "lorem_ipsum",
     "languages": ["lorem_ipsum"]
   },
@@ -609,7 +613,8 @@
       "code_typescript",
       "code_cobol",
       "code_common_lisp",
-      "code_odin"
+      "code_odin",
+      "code_fortran"
     ]
   }
 ]

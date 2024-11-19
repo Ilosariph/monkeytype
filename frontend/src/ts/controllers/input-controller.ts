@@ -286,6 +286,8 @@ async function handleSpace(): Promise<void> {
     }
   }
 
+  TestInput.corrected.pushHistory();
+
   const isLastWord = TestWords.words.currentIndex === TestWords.words.length;
   if (TestLogic.areAllTestWordsGenerated() && isLastWord) {
     void TestLogic.finish();
@@ -307,8 +309,6 @@ async function handleSpace(): Promise<void> {
     TestLogic.fail("min burst");
     return;
   }
-
-  TestInput.corrected.pushHistory();
 
   if (Config.keymapMode === "react") {
     void KeymapEvent.flash(" ", true);
@@ -907,6 +907,12 @@ $(document).on("keydown", async (event) => {
     return;
   }
 
+  FunboxList.get(Config.funbox).forEach((value) => {
+    if (value.functions?.handleKeydown) {
+      void value.functions?.handleKeydown(event);
+    }
+  });
+
   //autofocus
   const wordsFocused: boolean = $("#wordsInput").is(":focus");
   const pageTestActive: boolean = ActivePage.get() === "test";
@@ -1045,6 +1051,25 @@ $(document).on("keydown", async (event) => {
     if (Config.confidenceMode === "max") {
       event.preventDefault();
       return;
+    }
+
+    // if the user backspaces the indentation in a code language we need to empty
+    // the current word so the user is set back to the end of the last line
+    if (
+      Config.codeUnindentOnBackspace &&
+      TestInput.input.current.length > 0 &&
+      /^\t*$/.test(TestInput.input.current) &&
+      Config.language.startsWith("code") &&
+      isCharCorrect(
+        TestInput.input.current.slice(-1),
+        TestInput.input.current.length - 1
+      ) &&
+      (TestInput.input.history[TestWords.words.currentIndex - 1] !=
+        TestWords.words.get(TestWords.words.currentIndex - 1) ||
+        Config.freedomMode)
+    ) {
+      TestInput.input.current = "";
+      await TestUI.updateActiveWordLetters();
     }
   }
 
