@@ -898,11 +898,18 @@ describe("stats.ts", () => {
     });
   });
 
+  // Fork change (charachorder): accuracy is based on the final input state,
+  // corrected mistakes are not counted.
   describe("getAccuracy", () => {
-    it("calculates correct/incorrect/percentage", () => {
-      logTestEvent("input", 1100, input());
-      logTestEvent("input", 1200, input({ charIndex: 1 }));
-      logTestEvent("input", 1300, input({ charIndex: 2, correct: false }));
+    it("counts mistakes left in the final input", () => {
+      pushWords("abc", "d");
+      logTestEvent("input", 1100, input({ data: "a" }));
+      logTestEvent("input", 1200, input({ charIndex: 1, data: "b" }));
+      logTestEvent(
+        "input",
+        1300,
+        input({ charIndex: 2, data: "x", correct: false }),
+      );
 
       const acc = getAccuracy(buildEventLog());
       expect(acc.correct).toBe(2);
@@ -915,30 +922,65 @@ describe("stats.ts", () => {
       expect(acc.percentage).toBe(0);
     });
 
-    it("ignores delete events", () => {
-      logTestEvent("input", 1100, input());
-      logTestEvent("input", 1200, {
-        charIndex: 0,
-        wordIndex: 0,
-        inputType: "deleteContentBackward",
-      } as InputEventData);
-
-      const acc = getAccuracy(buildEventLog());
-      expect(acc.correct).toBe(1);
-      expect(acc.incorrect).toBe(0);
-    });
-
-    it("counts inputStopped events in accuracy", () => {
-      logTestEvent("input", 1100, input());
+    it("does not count corrected mistakes", () => {
+      pushWords("ab", "c");
+      logTestEvent("input", 1100, input({ data: "a" }));
       logTestEvent(
         "input",
         1200,
-        input({ charIndex: 1, correct: false, inputStopped: true }),
+        input({ charIndex: 1, data: "x", correct: false }),
+      );
+      logTestEvent("input", 1300, {
+        charIndex: 1,
+        wordIndex: 0,
+        inputType: "deleteContentBackward",
+        inputValue: "a",
+      });
+      logTestEvent(
+        "input",
+        1400,
+        input({ charIndex: 1, data: "b", inputValue: "ab" }),
+      );
+
+      const acc = getAccuracy(buildEventLog());
+      expect(acc.correct).toBe(2);
+      expect(acc.incorrect).toBe(0);
+      expect(acc.percentage).toBe(100);
+    });
+
+    it("does not count stopped inputs", () => {
+      pushWords("ab", "c");
+      logTestEvent("input", 1100, input({ data: "a" }));
+      logTestEvent(
+        "input",
+        1200,
+        input({ charIndex: 1, data: "x", correct: false, inputStopped: true }),
       );
 
       const acc = getAccuracy(buildEventLog());
       expect(acc.correct).toBe(1);
-      expect(acc.incorrect).toBe(1);
+      expect(acc.incorrect).toBe(0);
+      expect(acc.percentage).toBe(100);
+    });
+
+    it("counts mistakes left in submitted words", () => {
+      pushWords("ab", "cd");
+      logTestEvent("input", 1100, input({ data: "a" }));
+      logTestEvent(
+        "input",
+        1200,
+        input({ charIndex: 1, data: "x", correct: false }),
+      );
+      logTestEvent(
+        "input",
+        1300,
+        input({ charIndex: 2, data: " ", commitsWord: true }),
+      );
+      logTestEvent("input", 1400, input({ wordIndex: 1, data: "c" }));
+
+      const acc = getAccuracy(buildEventLog());
+      expect(acc.correct).toBe(2);
+      expect(acc.incorrect).toBe(2);
       expect(acc.percentage).toBe(50);
     });
   });
@@ -1940,10 +1982,10 @@ describe("stats.ts", () => {
 
       expect(findInputValueMismatches(inputEventsForWord(0))).toEqual([]);
       expect(getInputHistory(buildEventLog())[0]).toBe("h");
-      // the mistake still counts against accuracy
+      // fork change: corrected mistakes don't count against accuracy
       const acc = getAccuracy(buildEventLog());
-      expect(acc.correct).toBe(2);
-      expect(acc.incorrect).toBe(1);
+      expect(acc.correct).toBe(1);
+      expect(acc.incorrect).toBe(0);
       // and is still visible in the corrected history
       expect(getCorrectedWordsHistory(buildEventLog())[0]).toBe("hex");
     });

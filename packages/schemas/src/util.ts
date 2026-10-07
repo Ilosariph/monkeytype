@@ -47,7 +47,8 @@ export type NullableString = z.infer<typeof NullableStringSchema>;
 export const PercentageSchema = z.number().nonnegative().max(100);
 export type Percentage = z.infer<typeof PercentageSchema>;
 
-export const WpmSchema = z.number().nonnegative().max(420);
+// Fork change (charachorder): no upper wpm limit
+export const WpmSchema = z.number().nonnegative();
 export type Wpm = z.infer<typeof WpmSchema>;
 
 export const CustomTextModeSchema = z.enum(["repeat", "random", "shuffle"]);

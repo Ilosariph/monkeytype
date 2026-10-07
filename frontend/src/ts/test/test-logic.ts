@@ -139,6 +139,7 @@ import {
   getStartToFirstKeypressMs,
   getTestDurationMs,
   getAccuracy,
+  getLiveAccuracy,
   getKeypressOverlap,
   getErrorCountHistory,
   getWpmHistory,
@@ -149,7 +150,6 @@ import {
   getKeypressesPerSecond,
   getKeypressSpacing,
 } from "./events/stats";
-import { getLiveCachedAccuracy } from "./events/live-cache";
 import { calculateWpm } from "../utils/numbers";
 import { isDevEnvironment } from "../utils/env";
 import { EventLog } from "./events/types";
@@ -270,7 +270,7 @@ export async function restart(options = {} as RestartOptions): Promise<void> {
       TestTimer.clear(true);
       const liveEventLog = buildEventLog();
       const tt = getIncompleteTestSeconds(liveEventLog);
-      const acc = Numbers.roundTo2(getLiveCachedAccuracy());
+      const acc = Numbers.roundTo2(getLiveAccuracy(liveEventLog));
       pushIncompleteTest({ acc, seconds: tt });
     }
   }
@@ -950,25 +950,15 @@ export async function finish(difficultyFailed = false): Promise<void> {
     setIsTestInvalid(true);
     dontSave = true;
   } else if (
-    completedEvent.wpm < 0 ||
-    (completedEvent.wpm > 350 &&
-      completedEvent.mode !== "words" &&
-      completedEvent.mode2 !== "10") ||
-    (completedEvent.wpm > 420 &&
-      completedEvent.mode === "words" &&
-      completedEvent.mode2 === "10")
+    // Fork change (charachorder): no upper wpm limit
+    completedEvent.wpm < 0
   ) {
     showNoticeNotification("Test invalid - wpm");
     setIsTestInvalid(true);
     dontSave = true;
   } else if (
-    completedEvent.rawWpm < 0 ||
-    (completedEvent.rawWpm > 350 &&
-      completedEvent.mode !== "words" &&
-      completedEvent.mode2 !== "10") ||
-    (completedEvent.rawWpm > 420 &&
-      completedEvent.mode === "words" &&
-      completedEvent.mode2 === "10")
+    // Fork change (charachorder): no upper wpm limit
+    completedEvent.rawWpm < 0
   ) {
     showNoticeNotification("Test invalid - raw");
     setIsTestInvalid(true);

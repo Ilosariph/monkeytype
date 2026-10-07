@@ -21,12 +21,11 @@ import { createTimer } from "animejs";
 import { buildEventLog, getCurrentInput, logTestEvent } from "./events/data";
 import { roundTo2 } from "@monkeytype/util/numbers";
 import {
-  getLiveCachedAccuracy,
   getLiveCachedTestDurationMs,
   getLiveCachedTestSeconds,
   getLiveCachedTimerStartMs,
 } from "./events/live-cache";
-import { getChars } from "./events/stats";
+import { getChars, getLiveAccuracy } from "./events/stats";
 import { calculateWpm } from "../utils/numbers";
 import {
   getActiveWordIndex,
@@ -288,7 +287,7 @@ function timerStep(now: number, catchingUp: boolean): void {
     const chars = getChars(eventLog, true);
 
     const currentTestDurationMs = getLiveCachedTestDurationMs(now);
-    const acc = getLiveCachedAccuracy();
+    const acc = getLiveAccuracy(eventLog);
     const wpmAndRaw = {
       wpm: Math.round(
         calculateWpm(chars.correctWord, currentTestDurationMs / 1000),

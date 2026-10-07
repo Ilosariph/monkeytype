@@ -38,12 +38,6 @@ export function recordEventForCache(event: TestEvent): void {
   }
 }
 
-export function getLiveCachedAccuracy(): number {
-  return cache.totalInputs === 0
-    ? 100
-    : (cache.correctInputs / cache.totalInputs) * 100;
-}
-
 export function getLiveCachedMsSinceLastInputEvent(): number | null {
   return cache.msSinceLastInputEvent.value;
 }

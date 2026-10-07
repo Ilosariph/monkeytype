@@ -1,4 +1,6 @@
-const hasAnticheatImplemented = process.env["BYPASS_ANTICHEAT"] === "true";
+// Fork change (charachorder): anticheat is always bypassed, regardless of
+// BYPASS_ANTICHEAT, so results are accepted without validation (no wpm cap).
+const hasAnticheatImplemented = true;
 
 import { CompletedEvent, KeyStats } from "@monkeytype/schemas/results";
 import Logger from "../utils/logger";

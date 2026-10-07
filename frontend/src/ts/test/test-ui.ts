@@ -1,7 +1,7 @@
 import { Config } from "../config/store";
 import * as TestWords from "./test-words";
-import { getCurrentInput } from "./events/data";
-import { getLiveCachedAccuracy } from "./events/live-cache";
+import { buildEventLog, getCurrentInput } from "./events/data";
+import { getLiveAccuracy } from "./events/stats";
 import * as CustomText from "./custom-text";
 import * as Caret from "./caret";
 import * as Misc from "../utils/misc";
@@ -1345,7 +1345,7 @@ function afterAnyTestInput(
     void SoundController.playClick();
   }
 
-  const acc = Numbers.roundTo2(getLiveCachedAccuracy());
+  const acc = Numbers.roundTo2(getLiveAccuracy(buildEventLog()));
   if (!isNaN(acc)) {
     setCurrentLiveStats({ acc });
   }

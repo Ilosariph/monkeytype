@@ -547,6 +547,10 @@ export function getInputHistory(eventLog: EventLog): string[] {
   return history;
 }
 
+// Fork change (charachorder): accuracy is based on the final state of the
+// input rather than on every keypress. Chording enters a few characters that
+// get deleted and replaced by the correct word, so mistakes that were
+// corrected before the end of the test are not counted.
 export function getAccuracy(
   eventLog: EventLog,
   testMs?: number,
@@ -555,24 +559,10 @@ export function getAccuracy(
   incorrect: number;
   percentage: number;
 } {
-  const { events } = eventLog;
+  const chars = getChars(eventLog, true, testMs);
 
-  let correct = 0;
-  let incorrect = 0;
-
-  for (const event of events) {
-    if (testMs !== undefined && event.testMs > testMs) break;
-    if (event.type !== "input") continue;
-
-    if (!("correct" in event.data)) {
-      continue;
-    }
-    if (event.data.correct) {
-      correct++;
-    } else {
-      incorrect++;
-    }
-  }
+  const correct = chars.allCorrect;
+  const incorrect = chars.incorrect + chars.extra + chars.missed;
   const total = correct + incorrect;
   const percentage = total === 0 ? 0 : (correct / total) * 100;
 
@@ -581,6 +571,12 @@ export function getAccuracy(
     incorrect: incorrect,
     percentage: percentage,
   };
+}
+
+/** Live accuracy for the running test. Returns 100 before any input. */
+export function getLiveAccuracy(eventLog: EventLog): number {
+  const acc = getAccuracy(eventLog);
+  return acc.correct + acc.incorrect === 0 ? 100 : acc.percentage;
 }
 
 export function getKeypressSpacing(eventLog: EventLog): number[] {
