@@ -8,14 +8,14 @@ export default s.router(resultsContract, {
   get: {
     handler: async (r) => callController(ResultController.getResults)(r),
   },
+  getById: {
+    handler: async (r) => callController(ResultController.getResultById)(r),
+  },
   add: {
     handler: async (r) => callController(ResultController.addResult)(r),
   },
   updateTags: {
     handler: async (r) => callController(ResultController.updateTags)(r),
-  },
-  deleteAll: {
-    handler: async (r) => callController(ResultController.deleteAll)(r),
   },
   getLast: {
     handler: async (r) => callController(ResultController.getLastResult)(r),

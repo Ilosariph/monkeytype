@@ -1,12 +1,20 @@
 import * as TestLogic from "../../test/test-logic";
-import * as TestUI from "../../test/test-ui";
-import * as PractiseWordsModal from "../../modals/practise-words";
-import * as Notifications from "../../elements/notifications";
-import * as TestInput from "../../test/test-input";
+import { toggleResultWords } from "../../test/words-history";
+import {
+  showErrorNotification,
+  showSuccessNotification,
+} from "../../states/notifications";
 import * as TestWords from "../../test/test-words";
-import Config from "../../config";
+import { Config } from "../../config/store";
 import * as PractiseWords from "../../test/practise-words";
 import { Command, CommandsSubgroup } from "../types";
+import { getInputHistory } from "../../test/events/stats";
+import { getLastEventLog, getResultVisible } from "../../states/test";
+import { showModal } from "../../states/modals";
+import {
+  captureAndCopyToClipboard,
+  captureAndDownload,
+} from "../../test/screenshot";
 
 const practiceSubgroup: CommandsSubgroup = {
   title: "Practice words...",
@@ -16,7 +24,7 @@ const practiceSubgroup: CommandsSubgroup = {
       display: "missed",
       exec: (): void => {
         PractiseWords.init("words", false);
-        TestLogic.restart({
+        void TestLogic.restart({
           practiseMissed: true,
         });
       },
@@ -26,7 +34,17 @@ const practiceSubgroup: CommandsSubgroup = {
       display: "slow",
       exec: (): void => {
         PractiseWords.init("off", true);
-        TestLogic.restart({
+        void TestLogic.restart({
+          practiseMissed: true,
+        });
+      },
+    },
+    {
+      id: "practiseWordsBoth",
+      display: "both",
+      exec: (): void => {
+        PractiseWords.init("words", true);
+        void TestLogic.restart({
           practiseMissed: true,
         });
       },
@@ -35,11 +53,8 @@ const practiceSubgroup: CommandsSubgroup = {
       id: "practiseWordsCustom",
       display: "custom...",
       opensModal: true,
-      exec: (options): void => {
-        PractiseWordsModal.show({
-          animationMode: "modalOnly",
-          modalChain: options.commandlineModal,
-        });
+      exec: (): void => {
+        showModal("PractiseWords");
       },
     },
   ],
@@ -52,10 +67,10 @@ const commands: Command[] = [
     alias: "restart start begin type test typing",
     icon: "fa-chevron-right",
     available: (): boolean => {
-      return TestUI.resultVisible;
+      return getResultVisible();
     },
     exec: (): void => {
-      TestLogic.restart();
+      void TestLogic.restart();
     },
   },
   {
@@ -63,12 +78,12 @@ const commands: Command[] = [
     display: "Repeat test",
     icon: "fa-sync-alt",
     exec: (): void => {
-      TestLogic.restart({
+      void TestLogic.restart({
         withSameWordset: true,
       });
     },
     available: (): boolean => {
-      return TestUI.resultVisible;
+      return getResultVisible();
     },
   },
   {
@@ -77,7 +92,7 @@ const commands: Command[] = [
     icon: "fa-exclamation-triangle",
     subgroup: practiceSubgroup,
     available: (): boolean => {
-      return TestUI.resultVisible;
+      return getResultVisible();
     },
   },
   {
@@ -85,24 +100,38 @@ const commands: Command[] = [
     display: "Toggle word history",
     icon: "fa-align-left",
     exec: (): void => {
-      TestUI.toggleResultWords();
+      toggleResultWords();
     },
     available: (): boolean => {
-      return TestUI.resultVisible;
+      return getResultVisible();
     },
   },
   {
-    id: "saveScreenshot",
+    id: "copyScreenshot",
     display: "Copy screenshot to clipboard",
-    icon: "fa-image",
-    alias: "save",
+    icon: "fa-copy",
+    alias: "copy image clipboard",
     exec: (): void => {
       setTimeout(() => {
-        void TestUI.screenshot();
+        void captureAndCopyToClipboard();
       }, 500);
     },
     available: (): boolean => {
-      return TestUI.resultVisible;
+      return getResultVisible();
+    },
+  },
+  {
+    id: "downloadScreenshot",
+    display: "Download screenshot",
+    icon: "fa-download",
+    alias: "save image download file",
+    exec: (): void => {
+      setTimeout(async () => {
+        void captureAndDownload();
+      }, 500);
+    },
+    available: (): boolean => {
+      return getResultVisible();
     },
   },
   {
@@ -110,23 +139,33 @@ const commands: Command[] = [
     display: "Copy words to clipboard",
     icon: "fa-copy",
     exec: (): void => {
-      const words = (
+      const eventLog = getLastEventLog();
+      if (eventLog === null) {
+        showErrorNotification("No event log found!");
+        return;
+      }
+
+      const inputHistory = getInputHistory(eventLog);
+      const words =
         Config.mode === "zen"
-          ? TestInput.input.history
-          : TestWords.words.list.slice(0, TestInput.input.history.length)
-      ).join(" ");
+          ? inputHistory.join("")
+          : TestWords.words
+              .get()
+              .slice(0, inputHistory.length)
+              .map((word) => word.textWithCommit)
+              .join("");
 
       navigator.clipboard.writeText(words).then(
         () => {
-          Notifications.add("Copied to clipboard", 1);
+          showSuccessNotification("Copied to clipboard");
         },
         () => {
-          Notifications.add("Failed to copy!", -1);
-        }
+          showErrorNotification("Failed to copy!");
+        },
       );
     },
     available: (): boolean => {
-      return TestUI.resultVisible;
+      return getResultVisible();
     },
   },
 ];

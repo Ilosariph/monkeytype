@@ -1,34 +1,25 @@
-import request from "supertest";
-import app from "../../../src/app";
+import { describe, it, expect, beforeEach, vi } from "vitest";
+import { setup } from "../../__testData__/controller-test";
 import {
   BASE_CONFIGURATION,
   CONFIGURATION_FORM_SCHEMA,
 } from "../../../src/constants/base-configuration";
 import * as Configuration from "../../../src/init/configuration";
-import type { Configuration as ConfigurationType } from "@monkeytype/contracts/schemas/configuration";
-import { ObjectId } from "mongodb";
+import type { Configuration as ConfigurationType } from "@monkeytype/schemas/configuration";
 import * as Misc from "../../../src/utils/misc";
-import { DecodedIdToken } from "firebase-admin/auth";
-import * as AuthUtils from "../../../src/utils/auth";
 import * as AdminUuids from "../../../src/dal/admin-uids";
 
-const mockApp = request(app);
-const uid = new ObjectId().toHexString();
-const mockDecodedToken = {
-  uid,
-  email: "newuser@mail.com",
-  iat: 0,
-} as DecodedIdToken;
+const { mockApp, uid, mockAuth } = setup();
 
 describe("Configuration Controller", () => {
   const isDevEnvironmentMock = vi.spyOn(Misc, "isDevEnvironment");
-  const verifyIdTokenMock = vi.spyOn(AuthUtils, "verifyIdToken");
+
   const isAdminMock = vi.spyOn(AdminUuids, "isAdmin");
 
   beforeEach(() => {
-    isAdminMock.mockReset();
-    verifyIdTokenMock.mockReset();
-    isDevEnvironmentMock.mockReset();
+    isAdminMock.mockClear();
+
+    isDevEnvironmentMock.mockClear();
 
     isDevEnvironmentMock.mockReturnValue(true);
     isAdminMock.mockResolvedValue(true);
@@ -52,7 +43,7 @@ describe("Configuration Controller", () => {
   describe("getConfigurationSchema", () => {
     it("should get without authentication on dev", async () => {
       //GIVEN
-
+      mockAuth.noAuth();
       //WHEN
       const { body } = await mockApp.get("/configuration/schema").expect(200);
 
@@ -73,7 +64,6 @@ describe("Configuration Controller", () => {
     it("should get with authentication on prod", async () => {
       //GIVEN
       isDevEnvironmentMock.mockReturnValue(false);
-      verifyIdTokenMock.mockResolvedValue(mockDecodedToken);
 
       //WHEN
       const { body } = await mockApp
@@ -87,12 +77,11 @@ describe("Configuration Controller", () => {
         data: CONFIGURATION_FORM_SCHEMA,
       });
 
-      expect(verifyIdTokenMock).toHaveBeenCalled();
+      mockAuth.expectToHaveBeenCalled();
     });
     it("should fail with non-admin user on prod", async () => {
       //GIVEN
       isDevEnvironmentMock.mockReturnValue(false);
-      verifyIdTokenMock.mockResolvedValue(mockDecodedToken);
       isAdminMock.mockResolvedValue(false);
 
       //WHEN
@@ -103,7 +92,7 @@ describe("Configuration Controller", () => {
 
       //THEN
       expect(body.message).toEqual("You don't have permission to do this.");
-      expect(verifyIdTokenMock).toHaveBeenCalled();
+      mockAuth.expectToHaveBeenCalled();
       expect(isAdminMock).toHaveBeenCalledWith(uid);
     });
   });
@@ -111,15 +100,16 @@ describe("Configuration Controller", () => {
   describe("updateConfiguration", () => {
     const patchConfigurationMock = vi.spyOn(
       Configuration,
-      "patchConfiguration"
+      "patchConfiguration",
     );
     beforeEach(() => {
-      patchConfigurationMock.mockReset();
+      patchConfigurationMock.mockClear();
       patchConfigurationMock.mockResolvedValue(true);
     });
 
     it("should update without authentication on dev", async () => {
       //GIVEN
+      mockAuth.noAuth();
       const patch = {
         users: {
           premium: {
@@ -145,10 +135,11 @@ describe("Configuration Controller", () => {
 
     it("should fail update without authentication on prod", async () => {
       //GIVEN
+      mockAuth.noAuth();
       isDevEnvironmentMock.mockReturnValue(false);
 
       //WHEN
-      await request(app)
+      await mockApp
         .patch("/configuration")
         .send({ configuration: {} })
         .expect(401);
@@ -159,7 +150,6 @@ describe("Configuration Controller", () => {
     it("should update with authentication on prod", async () => {
       //GIVEN
       isDevEnvironmentMock.mockReturnValue(false);
-      verifyIdTokenMock.mockResolvedValue(mockDecodedToken);
 
       //WHEN
       await mockApp
@@ -170,14 +160,13 @@ describe("Configuration Controller", () => {
 
       //THEN
       expect(patchConfigurationMock).toHaveBeenCalled();
-      expect(verifyIdTokenMock).toHaveBeenCalled();
+      mockAuth.expectToHaveBeenCalled();
     });
 
     it("should fail for non admin users on prod", async () => {
       //GIVEN
       isDevEnvironmentMock.mockReturnValue(false);
       isAdminMock.mockResolvedValue(false);
-      verifyIdTokenMock.mockResolvedValue(mockDecodedToken);
 
       //WHEN
       await mockApp

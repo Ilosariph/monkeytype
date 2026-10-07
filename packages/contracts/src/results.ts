@@ -3,15 +3,16 @@ import { z } from "zod";
 import {
   CommonResponses,
   meta,
-  MonkeyResponseSchema,
+  MonkeyClientError,
   responseWithData,
-} from "./schemas/api";
+} from "./util/api";
 import {
   CompletedEventSchema,
   PostResultResponseSchema,
+  ResultMinifiedSchema,
   ResultSchema,
-} from "./schemas/results";
-import { IdSchema } from "./schemas/util";
+} from "@monkeytype/schemas/results";
+import { IdSchema } from "@monkeytype/schemas/util";
 
 export const GetResultsQuerySchema = z.object({
   onOrAfterTimestamp: z
@@ -20,7 +21,7 @@ export const GetResultsQuerySchema = z.object({
     .min(1589428800000)
     .optional()
     .describe(
-      "Timestamp of the earliest result to fetch. If omitted the most recent results are fetched."
+      "Timestamp of the earliest result to fetch. If omitted the most recent results are fetched.",
     ),
   offset: z
     .number()
@@ -38,8 +39,19 @@ export const GetResultsQuerySchema = z.object({
 });
 export type GetResultsQuery = z.infer<typeof GetResultsQuerySchema>;
 
-export const GetResultsResponseSchema = responseWithData(z.array(ResultSchema));
+export const GetResultsResponseSchema = responseWithData(
+  z.array(ResultMinifiedSchema),
+);
 export type GetResultsResponse = z.infer<typeof GetResultsResponseSchema>;
+
+export const GetResultByIdPathSchema = z.object({
+  resultId: IdSchema,
+});
+export type GetResultByIdPath = z.infer<typeof GetResultByIdPathSchema>;
+
+export const GetResultByIdResponseSchema = responseWithData(ResultSchema);
+
+export type GetResultByIdResponse = z.infer<typeof GetResultByIdResponseSchema>;
 
 export const AddResultRequestSchema = z.object({
   result: CompletedEventSchema,
@@ -47,7 +59,7 @@ export const AddResultRequestSchema = z.object({
 export type AddResultRequest = z.infer<typeof AddResultRequestSchema>;
 
 export const AddResultResponseSchema = responseWithData(
-  PostResultResponseSchema
+  PostResultResponseSchema,
 );
 export type AddResultResponse = z.infer<typeof AddResultResponseSchema>;
 
@@ -61,7 +73,7 @@ export type UpdateResultTagsRequest = z.infer<
 export const UpdateResultTagsResponseSchema = responseWithData(
   z.object({
     tagPbs: z.array(IdSchema),
-  })
+  }),
 );
 export type UpdateResultTagsResponse = z.infer<
   typeof UpdateResultTagsResponseSchema
@@ -92,6 +104,25 @@ export const resultsContract = c.router(
         },
       }),
     },
+    getById: {
+      summary: "get result by id",
+      description: "Get result by id",
+      method: "GET",
+      path: "/id/:resultId",
+      pathParams: GetResultByIdPathSchema,
+      responses: {
+        200: GetResultByIdResponseSchema,
+      },
+      metadata: meta({
+        authenticationOptions: {
+          acceptApeKeys: true,
+        },
+        rateLimit: {
+          normal: "resultByIdGet",
+          apeKey: "resultByIdGetApe",
+        },
+      }),
+    },
     add: {
       summary: "add result",
       description: "Add a test result for the current user",
@@ -100,6 +131,13 @@ export const resultsContract = c.router(
       body: AddResultRequestSchema.strict(),
       responses: {
         200: AddResultResponseSchema,
+        460: MonkeyClientError.describe("Test too short"),
+        461: MonkeyClientError.describe("Result hash invalid"),
+        462: MonkeyClientError.describe("Result spacing invalid"),
+        463: MonkeyClientError.describe("Result data invalid"),
+        464: MonkeyClientError.describe("Missing key data"),
+        465: MonkeyClientError.describe("Bot detected"),
+        466: MonkeyClientError.describe("Duplicate result"),
       },
       metadata: meta({
         rateLimit: "resultsAdd",
@@ -120,22 +158,6 @@ export const resultsContract = c.router(
       },
       metadata: meta({
         rateLimit: "resultsTagsUpdate",
-      }),
-    },
-    deleteAll: {
-      summary: "delete all results",
-      description: "Delete all results for the current user",
-      method: "DELETE",
-      path: "",
-      body: c.noBody(),
-      responses: {
-        200: MonkeyResponseSchema,
-      },
-      metadata: meta({
-        authenticationOptions: {
-          requireFreshToken: true,
-        },
-        rateLimit: "resultsDeleteAll",
       }),
     },
     getLast: {
@@ -161,5 +183,5 @@ export const resultsContract = c.router(
       openApiTags: "results",
     }),
     commonResponses: CommonResponses,
-  }
+  },
 );

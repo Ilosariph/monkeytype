@@ -1,12 +1,12 @@
 import { initContract } from "@ts-rest/core";
 import { z } from "zod";
+import { IdSchema } from "@monkeytype/schemas/util";
 import {
   CommonResponses,
   meta,
   MonkeyResponseSchema,
   responseWithData,
-} from "./schemas/api";
-import { IdSchema } from "./schemas/util";
+} from "./util/api";
 
 export const ToggleBanRequestSchema = z
   .object({
@@ -15,12 +15,28 @@ export const ToggleBanRequestSchema = z
   .strict();
 export type ToggleBanRequest = z.infer<typeof ToggleBanRequestSchema>;
 
+export const ClearStreakHourOffsetRequestSchema = z
+  .object({
+    uid: IdSchema,
+  })
+  .strict();
+export type ClearStreakHourOffsetRequest = z.infer<
+  typeof ClearStreakHourOffsetRequestSchema
+>;
+
 export const ToggleBanResponseSchema = responseWithData(
   z.object({
     banned: z.boolean(),
-  })
+  }),
 ).strict();
 export type ToggleBanResponse = z.infer<typeof ToggleBanResponseSchema>;
+
+export const DeleteUserRequestSchema = z
+  .object({
+    uid: IdSchema,
+  })
+  .strict();
+export type DeleteUserRequest = z.infer<typeof DeleteUserRequestSchema>;
 
 export const AcceptReportsRequestSchema = z
   .object({
@@ -35,7 +51,7 @@ export const RejectReportsRequestSchema = z
       .array(
         z
           .object({ reportId: z.string(), reason: z.string().optional() })
-          .strict()
+          .strict(),
       )
       .nonempty(),
   })
@@ -71,6 +87,27 @@ export const adminContract = c.router(
       body: ToggleBanRequestSchema,
       responses: {
         200: ToggleBanResponseSchema,
+      },
+    },
+    clearStreakHourOffset: {
+      summary: "clear streak hour offset",
+      description: "Clear the streak hour offset for a user",
+      method: "POST",
+      path: "/clearStreakHourOffset",
+      body: ClearStreakHourOffsetRequestSchema,
+      responses: {
+        200: MonkeyResponseSchema,
+      },
+    },
+    deleteUser: {
+      summary: "delete user",
+      description:
+        "Delete the account of the given user, including all their data.",
+      method: "POST",
+      path: "/deleteUser",
+      body: DeleteUserRequestSchema,
+      responses: {
+        200: MonkeyResponseSchema,
       },
     },
     acceptReports: {
@@ -119,5 +156,5 @@ export const adminContract = c.router(
     }),
 
     commonResponses: CommonResponses,
-  }
+  },
 );

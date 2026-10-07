@@ -1,4 +1,4 @@
-FROM node:20.16.0-alpine3.19 AS builder
+FROM node:24.11.0-alpine3.22 AS builder
 WORKDIR /app
 
 #ENV
@@ -13,7 +13,7 @@ COPY docker/frontend/firebase-config-live.ts frontend/src/ts/constants/firebase-
 COPY docker/frontend/firebase-config-live.ts frontend/src/ts/constants/firebase-config-live.ts
 
 #gimme pnpm + build
-RUN npm i -g pnpm && \
+RUN npm i -g pnpm@11.21.0 && \
     pnpm i --frozen-lockfile && \
     npm run build
 
@@ -21,6 +21,7 @@ RUN npm i -g pnpm && \
 FROM nginx:mainline-alpine
 
 COPY --from=builder /app/frontend/dist /usr/share/nginx/html
+COPY docker/frontend/nginx.conf /etc/nginx/conf.d/default.conf
 COPY docker/frontend/updateConfig.sh /docker-entrypoint.d/updateConfig.sh
 RUN chmod +x /docker-entrypoint.d/updateConfig.sh
 

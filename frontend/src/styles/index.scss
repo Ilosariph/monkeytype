@@ -1,5 +1,25 @@
-@import "normalize.css", "fontawesome-5", "buttons", "fonts", "404", "ads",
-  "about", "account", "animations", "banners", "caret", "commandline", "core",
-  "footer", "inputs", "keymap", "leaderboards", "login", "monkey", "nav",
-  "notifications", "popups", "profile", "scroll", "settings", "account-settings",
-  "test", "media-queries";
+@layer hidden {
+  // custom layer to hide elements without using !important
+  // (as long as this layer is higher than custom-styles)
+  // this is to fix issues with tailwinds hidden class
+  // while still working for scss files
+  .hidden {
+    display: none;
+  }
+
+  // same for invisible
+  .invisible {
+    opacity: 0;
+    pointer-events: none;
+    visibility: hidden;
+  }
+}
+
+@layer custom-styles {
+  @import "buttons", "ads", "test-activity", "animations", "caret", "core",
+    "fonts", "inputs", "popups", "scroll", "test", "media-queries";
+
+  .chartCanvas {
+    width: 100% !important;
+  }
+}

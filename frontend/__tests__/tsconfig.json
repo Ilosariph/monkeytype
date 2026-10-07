@@ -4,11 +4,16 @@
     "moduleResolution": "Bundler",
     "module": "ESNext",
     "noEmit": true,
-    "types": ["vitest/globals"]
+    "jsx": "preserve",
+    "jsxImportSource": "solid-js",
+    "types": ["node"]
   },
-  "ts-node": {
-    "files": true
-  },
-  "files": ["../src/ts/types/types.d.ts", "vitest.d.ts"],
-  "include": ["./**/*.spec.ts", "./setup-tests.ts"]
+  "files": ["vitest.d.ts"],
+  "include": [
+    "./__harness__/**/*.ts",
+    "./**/*.spec.ts",
+    "./**/*.spec.tsx",
+    "./**/*.jsdom-spec.ts",
+    "./setup-tests.ts"
+  ]
 }

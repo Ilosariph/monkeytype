@@ -1,6 +1,7 @@
 {
   "name": "esperanto_h_sistemo_36k",
   "noLazyMode": true,
+  "orderedByFrequency": true,
   "words": [
     "la",
     "mi",
@@ -32757,7 +32758,6 @@
     "kromsalajro",
     "obstinulon",
     "afishon",
-    "сxu",
     "shmactrinkas",
     "saltanta",
     "brsh",
@@ -35385,7 +35385,7 @@
     "sedativan",
     "malveras",
     "soriano",
-    "peсa",
+    "peca",
     "kreto",
     "seniluziigis",
     "banadon",

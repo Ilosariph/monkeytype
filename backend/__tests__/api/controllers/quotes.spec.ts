@@ -1,36 +1,36 @@
-import request from "supertest";
-import app from "../../../src/app";
+import { describe, it, expect, beforeEach, vi } from "vitest";
+import { setup } from "../../__testData__/controller-test";
 import * as Configuration from "../../../src/init/configuration";
 import * as UserDal from "../../../src/dal/user";
 import * as NewQuotesDal from "../../../src/dal/new-quotes";
 import type { DBNewQuote } from "../../../src/dal/new-quotes";
 import * as QuoteRatingsDal from "../../../src/dal/quote-ratings";
 import * as ReportDal from "../../../src/dal/report";
+import * as LogsDal from "../../../src/dal/logs";
 import * as Captcha from "../../../src/utils/captcha";
 import { ObjectId } from "mongodb";
-import _ from "lodash";
-import { ApproveQuote } from "@monkeytype/contracts/schemas/quotes";
+import { ApproveQuote } from "@monkeytype/schemas/quotes";
 
-const mockApp = request(app);
+const { mockApp, uid } = setup();
 const configuration = Configuration.getCachedConfiguration();
-
-const uid = new ObjectId().toHexString();
 
 describe("QuotesController", () => {
   const getPartialUserMock = vi.spyOn(UserDal, "getPartialUser");
+  const logsAddLogMock = vi.spyOn(LogsDal, "addLog");
 
-  beforeEach(() => {
-    enableQuotes(true);
+  beforeEach(async () => {
+    await enableQuotes(true);
 
     const user = { quoteMod: true, name: "Bob" } as any;
-    getPartialUserMock.mockReset().mockResolvedValue(user);
+    getPartialUserMock.mockClear().mockResolvedValue(user);
+    logsAddLogMock.mockClear().mockResolvedValue();
   });
 
   describe("getQuotes", () => {
     const getQuotesMock = vi.spyOn(NewQuotesDal, "get");
 
     beforeEach(() => {
-      getQuotesMock.mockReset();
+      getQuotesMock.mockClear();
       getQuotesMock.mockResolvedValue([]);
     });
     it("should return quotes", async () => {
@@ -58,7 +58,7 @@ describe("QuotesController", () => {
       //WHEN
       const { body } = await mockApp
         .get("/quotes")
-        .set("authorization", `Uid ${uid}`)
+        .set("Authorization", `Bearer ${uid}`)
         .expect(200);
 
       //THEN
@@ -76,13 +76,13 @@ describe("QuotesController", () => {
     it("should return quotes with quoteMod", async () => {
       //GIVEN
       getPartialUserMock
-        .mockReset()
+        .mockClear()
         .mockResolvedValue({ quoteMod: "english" } as any);
 
       //WHEN
       await mockApp
         .get("/quotes")
-        .set("authorization", `Uid ${uid}`)
+        .set("Authorization", `Bearer ${uid}`)
         .expect(200);
 
       //THEN
@@ -92,13 +92,13 @@ describe("QuotesController", () => {
     it("should fail with quoteMod false", async () => {
       //GIVEN
       getPartialUserMock
-        .mockReset()
+        .mockClear()
         .mockResolvedValue({ quoteMod: false } as any);
 
       //WHEN
       const { body } = await mockApp
         .get("/quotes")
-        .set("authorization", `Uid ${uid}`)
+        .set("Authorization", `Bearer ${uid}`)
         .expect(403);
 
       //THEN
@@ -108,12 +108,12 @@ describe("QuotesController", () => {
     });
     it("should fail with quoteMod empty", async () => {
       //GIVEN
-      getPartialUserMock.mockReset().mockResolvedValue({ quoteMod: "" } as any);
+      getPartialUserMock.mockClear().mockResolvedValue({ quoteMod: "" } as any);
 
       //WHEN
       const { body } = await mockApp
         .get("/quotes")
-        .set("authorization", `Uid ${uid}`)
+        .set("Authorization", `Bearer ${uid}`)
         .expect(403);
 
       //THEN
@@ -128,7 +128,6 @@ describe("QuotesController", () => {
   describe("isSubmissionsEnabled", () => {
     it("should return for quotes enabled without authentication", async () => {
       //GIVEN
-      enableQuotes(true);
 
       //WHEN
       const { body } = await mockApp
@@ -142,6 +141,7 @@ describe("QuotesController", () => {
     });
     it("should return for quotes disabled without authentication", async () => {
       //GIVEN
+      await enableQuotes(false);
 
       //WHEN
       const { body } = await mockApp
@@ -149,8 +149,8 @@ describe("QuotesController", () => {
         .expect(200);
 
       expect(body).toEqual({
-        message: "Quote submission enabled",
-        data: { isEnabled: true },
+        message: "Quote submission disabled",
+        data: { isEnabled: false },
       });
     });
   });
@@ -159,10 +159,10 @@ describe("QuotesController", () => {
     const verifyCaptchaMock = vi.spyOn(Captcha, "verify");
 
     beforeEach(() => {
-      addQuoteMock.mockReset();
-      addQuoteMock.mockResolvedValue({} as any);
+      addQuoteMock.mockClear();
+      addQuoteMock.mockResolvedValue({});
 
-      verifyCaptchaMock.mockReset();
+      verifyCaptchaMock.mockClear();
       verifyCaptchaMock.mockResolvedValue(true);
     });
 
@@ -178,7 +178,7 @@ describe("QuotesController", () => {
       //WHEN
       const { body } = await mockApp
         .post("/quotes")
-        .set("authorization", `Uid ${uid}`)
+        .set("Authorization", `Bearer ${uid}`)
         .send(newQuote)
         .expect(200);
 
@@ -192,7 +192,7 @@ describe("QuotesController", () => {
         newQuote.text,
         newQuote.source,
         newQuote.language,
-        uid
+        uid,
       );
 
       expect(verifyCaptchaMock).toHaveBeenCalledWith(newQuote.captcha);
@@ -202,24 +202,24 @@ describe("QuotesController", () => {
     });
     it("should fail if feature is disabled", async () => {
       //GIVEN
-      enableQuotes(false);
+      await enableQuotes(false);
 
       //WHEN
       const { body } = await mockApp
         .post("/quotes")
-        .set("authorization", `Uid ${uid}`)
+        .set("Authorization", `Bearer ${uid}`)
         .expect(503);
 
       //THEN
       expect(body.message).toEqual(
-        "Quote submission is disabled temporarily. The queue is quite long and we need some time to catch up."
+        "Quote submission is disabled temporarily. The queue is quite long and we need some time to catch up.",
       );
     });
     it("should fail without mandatory properties", async () => {
       //WHEN
       const { body } = await mockApp
         .post("/quotes")
-        .set("authorization", `Uid ${uid}`)
+        .set("Authorization", `Bearer ${uid}`)
         .expect(422);
 
       expect(body).toEqual({
@@ -243,7 +243,7 @@ describe("QuotesController", () => {
           captcha: "captcha",
           extra: "value",
         })
-        .set("authorization", `Uid ${uid}`)
+        .set("Authorization", `Bearer ${uid}`)
         .expect(422);
 
       //THEN
@@ -265,7 +265,7 @@ describe("QuotesController", () => {
           language: "english",
           captcha: "captcha",
         })
-        .set("authorization", `Uid ${uid}`)
+        .set("Authorization", `Bearer ${uid}`)
         .expect(422);
 
       //THEN
@@ -276,7 +276,7 @@ describe("QuotesController", () => {
     const approveQuoteMock = vi.spyOn(NewQuotesDal, "approve");
 
     beforeEach(() => {
-      approveQuoteMock.mockReset();
+      approveQuoteMock.mockClear();
     });
 
     it("should approve", async () => {
@@ -297,7 +297,7 @@ describe("QuotesController", () => {
       //WHEN
       const { body } = await mockApp
         .post("/quotes/approve")
-        .set("authorization", `Uid ${uid}`)
+        .set("Authorization", `Bearer ${uid}`)
         .send({
           quoteId,
           editText: "editedText",
@@ -315,7 +315,7 @@ describe("QuotesController", () => {
         quoteId,
         "editedText",
         "editedSource",
-        "Bob"
+        "Bob",
       );
     });
     it("should approve with optional parameters as null", async () => {
@@ -329,7 +329,7 @@ describe("QuotesController", () => {
       //WHEN
       const { body } = await mockApp
         .post("/quotes/approve")
-        .set("authorization", `Uid ${uid}`)
+        .set("Authorization", `Bearer ${uid}`)
         .send({ quoteId, editText: null, editSource: null })
         .expect(200);
 
@@ -343,7 +343,7 @@ describe("QuotesController", () => {
         quoteId,
         undefined,
         undefined,
-        "Bob"
+        "Bob",
       );
     });
     it("should approve without optional parameters", async () => {
@@ -357,7 +357,7 @@ describe("QuotesController", () => {
       //WHEN
       const { body } = await mockApp
         .post("/quotes/approve")
-        .set("authorization", `Uid ${uid}`)
+        .set("Authorization", `Bearer ${uid}`)
         .send({ quoteId })
         .expect(200);
 
@@ -371,14 +371,14 @@ describe("QuotesController", () => {
         quoteId,
         undefined,
         undefined,
-        "Bob"
+        "Bob",
       );
     });
     it("should fail without mandatory properties", async () => {
       //WHEN
       const { body } = await mockApp
         .post("/quotes/approve")
-        .set("authorization", `Uid ${uid}`)
+        .set("Authorization", `Bearer ${uid}`)
         .expect(422);
 
       //THEN
@@ -391,7 +391,7 @@ describe("QuotesController", () => {
       //WHEN
       const { body } = await mockApp
         .post("/quotes/approve")
-        .set("authorization", `Uid ${uid}`)
+        .set("Authorization", `Bearer ${uid}`)
         .send({ quoteId: new ObjectId().toHexString(), extra: "value" })
         .expect(422);
 
@@ -403,12 +403,12 @@ describe("QuotesController", () => {
     });
     it("should fail if user is no quote mod", async () => {
       //GIVEN
-      getPartialUserMock.mockReset().mockResolvedValue({} as any);
+      getPartialUserMock.mockClear().mockResolvedValue({} as any);
 
       //WHEN
       const { body } = await mockApp
         .post("/quotes/approve")
-        .set("authorization", `Uid ${uid}`)
+        .set("Authorization", `Bearer ${uid}`)
         .send({ quoteId: new ObjectId().toHexString() })
         .expect(403);
 
@@ -426,7 +426,8 @@ describe("QuotesController", () => {
     const refuseQuoteMock = vi.spyOn(NewQuotesDal, "refuse");
 
     beforeEach(() => {
-      refuseQuoteMock.mockReset();
+      refuseQuoteMock.mockClear();
+      refuseQuoteMock.mockResolvedValue();
     });
 
     it("should refuse quote", async () => {
@@ -436,7 +437,7 @@ describe("QuotesController", () => {
       //WHEN
       const { body } = await mockApp
         .post("/quotes/reject")
-        .set("authorization", `Uid ${uid}`)
+        .set("Authorization", `Bearer ${uid}`)
         .send({ quoteId })
         .expect(200);
 
@@ -451,7 +452,7 @@ describe("QuotesController", () => {
       //WHEN
       const { body } = await mockApp
         .post("/quotes/reject")
-        .set("authorization", `Uid ${uid}`)
+        .set("Authorization", `Bearer ${uid}`)
 
         .expect(422);
 
@@ -468,7 +469,7 @@ describe("QuotesController", () => {
       //WHEN
       const { body } = await mockApp
         .post("/quotes/reject")
-        .set("authorization", `Uid ${uid}`)
+        .set("Authorization", `Bearer ${uid}`)
         .send({ quoteId, extra: "value" })
         .expect(422);
 
@@ -480,13 +481,13 @@ describe("QuotesController", () => {
     });
     it("should fail if user is no quote mod", async () => {
       //GIVEN
-      getPartialUserMock.mockReset().mockResolvedValue({} as any);
+      getPartialUserMock.mockClear().mockResolvedValue({} as any);
       const quoteId = new ObjectId().toHexString();
 
       //WHEN
       const { body } = await mockApp
         .post("/quotes/reject")
-        .set("authorization", `Uid ${uid}`)
+        .set("Authorization", `Bearer ${uid}`)
         .send({ quoteId })
         .expect(403);
 
@@ -504,7 +505,7 @@ describe("QuotesController", () => {
     const getRatingMock = vi.spyOn(QuoteRatingsDal, "get");
 
     beforeEach(() => {
-      getRatingMock.mockReset();
+      getRatingMock.mockClear();
     });
 
     it("should get", async () => {
@@ -517,13 +518,13 @@ describe("QuotesController", () => {
         ratings: 100,
         totalRating: 122,
       };
-      getRatingMock.mockResolvedValue(quoteRating);
+      getRatingMock.mockResolvedValue(quoteRating as any);
 
       //WHEN
       const { body } = await mockApp
         .get("/quotes/rating")
         .query({ quoteId: 42, language: "english" })
-        .set("authorization", `Uid ${uid}`)
+        .set("Authorization", `Bearer ${uid}`)
         .expect(200);
 
       //THEN
@@ -538,7 +539,7 @@ describe("QuotesController", () => {
       //WHEN
       const { body } = await mockApp
         .get("/quotes/rating")
-        .set("authorization", `Uid ${uid}`)
+        .set("Authorization", `Bearer ${uid}`)
         .expect(422);
 
       //THEN
@@ -551,7 +552,7 @@ describe("QuotesController", () => {
       //WHEN
       const { body } = await mockApp
         .get("/quotes/rating")
-        .set("authorization", `Uid ${uid}`)
+        .set("Authorization", `Bearer ${uid}`)
         .query({ quoteId: 42, language: "english", extra: "value" })
         .expect(422);
 
@@ -574,11 +575,11 @@ describe("QuotesController", () => {
 
     beforeEach(() => {
       getPartialUserMock
-        .mockReset()
+        .mockClear()
         .mockResolvedValue({ quoteRatings: null } as any);
 
-      updateQuotesRatingsMock.mockReset();
-      submitQuoteRating.mockReset();
+      updateQuotesRatingsMock.mockClear().mockResolvedValue({} as any);
+      submitQuoteRating.mockClear().mockResolvedValue();
     });
     it("should submit new rating", async () => {
       //GIVEN
@@ -586,7 +587,7 @@ describe("QuotesController", () => {
       //WHEN
       const { body } = await mockApp
         .post("/quotes/rating")
-        .set("authorization", `Uid ${uid}`)
+        .set("Authorization", `Bearer ${uid}`)
         .send({
           quoteId: 23,
           rating: 4,
@@ -609,14 +610,14 @@ describe("QuotesController", () => {
     it("should update existing rating", async () => {
       //GIVEN
 
-      getPartialUserMock.mockReset().mockResolvedValue({
+      getPartialUserMock.mockClear().mockResolvedValue({
         quoteRatings: { german: { "4": 1 }, english: { "5": 5, "23": 4 } },
       } as any);
 
       //WHEN
       const { body } = await mockApp
         .post("/quotes/rating")
-        .set("authorization", `Uid ${uid}`)
+        .set("Authorization", `Bearer ${uid}`)
         .send({
           quoteId: 23,
           rating: 2,
@@ -641,14 +642,14 @@ describe("QuotesController", () => {
     it("should update existing rating with same rating", async () => {
       //GIVEN
 
-      getPartialUserMock.mockReset().mockResolvedValue({
+      getPartialUserMock.mockClear().mockResolvedValue({
         quoteRatings: { german: { "4": 1 }, english: { "5": 5, "23": 4 } },
       } as any);
 
       //WHEN
       const { body } = await mockApp
         .post("/quotes/rating")
-        .set("authorization", `Uid ${uid}`)
+        .set("Authorization", `Bearer ${uid}`)
         .send({
           quoteId: 23,
           rating: 4,
@@ -674,7 +675,7 @@ describe("QuotesController", () => {
       //WHEN
       const { body } = await mockApp
         .post("/quotes/rating")
-        .set("authorization", `Uid ${uid}`)
+        .set("Authorization", `Bearer ${uid}`)
         .expect(422);
 
       //THEN
@@ -691,7 +692,7 @@ describe("QuotesController", () => {
       //WHEN
       const { body } = await mockApp
         .post("/quotes/rating")
-        .set("authorization", `Uid ${uid}`)
+        .set("Authorization", `Bearer ${uid}`)
         .send({ quoteId: 23, language: "english", rating: 5, extra: "value" })
         .expect(422);
 
@@ -705,7 +706,7 @@ describe("QuotesController", () => {
       //WHEN
       const { body } = await mockApp
         .post("/quotes/rating")
-        .set("authorization", `Uid ${uid}`)
+        .set("Authorization", `Bearer ${uid}`)
         .send({ quoteId: 23, language: "english", rating: 0 })
         .expect(422);
 
@@ -721,7 +722,7 @@ describe("QuotesController", () => {
       //WHEN
       const { body } = await mockApp
         .post("/quotes/rating")
-        .set("authorization", `Uid ${uid}`)
+        .set("Authorization", `Bearer ${uid}`)
         .send({ quoteId: 23, language: "english", rating: 6 })
         .expect(422);
 
@@ -736,7 +737,7 @@ describe("QuotesController", () => {
       //WHEN
       const { body } = await mockApp
         .post("/quotes/rating")
-        .set("authorization", `Uid ${uid}`)
+        .set("Authorization", `Bearer ${uid}`)
         .send({ quoteId: 23, language: "english", rating: 2.5 })
         .expect(422);
       //THEN
@@ -754,13 +755,11 @@ describe("QuotesController", () => {
     const verifyCaptchaMock = vi.spyOn(Captcha, "verify");
     const createReportMock = vi.spyOn(ReportDal, "createReport");
 
-    beforeEach(() => {
-      enableQuoteReporting(true);
+    beforeEach(async () => {
+      await enableQuoteReporting(true);
 
-      verifyCaptchaMock.mockReset();
-      verifyCaptchaMock.mockResolvedValue(true);
-
-      createReportMock.mockReset();
+      verifyCaptchaMock.mockClear().mockResolvedValue(true);
+      createReportMock.mockClear().mockResolvedValue();
     });
 
     it("should report quote", async () => {
@@ -768,7 +767,7 @@ describe("QuotesController", () => {
       //WHEN
       const { body } = await mockApp
         .post("/quotes/report")
-        .set("authorization", `Uid ${uid}`)
+        .set("Authorization", `Bearer ${uid}`)
         .send({
           quoteId: "23", //quoteId is string on this endpoint
           quoteLanguage: "english",
@@ -795,14 +794,14 @@ describe("QuotesController", () => {
           comment: "I don't like this.",
         }),
         10, //configuration maxReport
-        20 //configuration contentReportLimit
+        20, //configuration contentReportLimit
       );
     });
 
     it("should report quote without comment", async () => {
       await mockApp
         .post("/quotes/report")
-        .set("authorization", `Uid ${uid}`)
+        .set("Authorization", `Bearer ${uid}`)
         .send({
           quoteId: "23", //quoteId is string on this endpoint
           quoteLanguage: "english",
@@ -814,7 +813,7 @@ describe("QuotesController", () => {
     it("should report quote with empty comment", async () => {
       await mockApp
         .post("/quotes/report")
-        .set("authorization", `Uid ${uid}`)
+        .set("Authorization", `Bearer ${uid}`)
         .send({
           quoteId: "23", //quoteId is string on this endpoint
           quoteLanguage: "english",
@@ -828,7 +827,7 @@ describe("QuotesController", () => {
       //WHEN
       const { body } = await mockApp
         .post("/quotes/report")
-        .set("authorization", `Uid ${uid}`)
+        .set("Authorization", `Bearer ${uid}`)
         .expect(422);
 
       //THEN
@@ -844,12 +843,12 @@ describe("QuotesController", () => {
     });
     it("should fail if feature is disabled", async () => {
       //GIVEN
-      enableQuoteReporting(false);
+      await enableQuoteReporting(false);
 
       //WHEN
       const { body } = await mockApp
         .post("/quotes/report")
-        .set("authorization", `Uid ${uid}`)
+        .set("Authorization", `Bearer ${uid}`)
         .expect(503);
 
       //THEN
@@ -858,13 +857,13 @@ describe("QuotesController", () => {
     it("should fail if user cannot report", async () => {
       //GIVEN
       getPartialUserMock
-        .mockReset()
+        .mockClear()
         .mockResolvedValue({ canReport: false } as any);
 
       //WHEN
       const { body } = await mockApp
         .post("/quotes/report")
-        .set("authorization", `Uid ${uid}`)
+        .set("Authorization", `Bearer ${uid}`)
         .expect(403);
 
       //THEN
@@ -874,21 +873,24 @@ describe("QuotesController", () => {
 });
 
 async function enableQuotes(enabled: boolean): Promise<void> {
-  const mockConfig = _.merge(await configuration, {
-    quotes: { submissionsEnabled: enabled },
-  });
+  const mockConfig = await configuration;
+  mockConfig.quotes = { ...mockConfig.quotes, submissionsEnabled: enabled };
 
   vi.spyOn(Configuration, "getCachedConfiguration").mockResolvedValue(
-    mockConfig
+    mockConfig,
   );
 }
 
 async function enableQuoteReporting(enabled: boolean): Promise<void> {
-  const mockConfig = _.merge(await configuration, {
-    quotes: { reporting: { enabled, maxReports: 10, contentReportLimit: 20 } },
-  });
+  const mockConfig = await configuration;
+  mockConfig.quotes.reporting = {
+    ...mockConfig.quotes.reporting,
+    enabled,
+    maxReports: 10,
+    contentReportLimit: 20,
+  };
 
   vi.spyOn(Configuration, "getCachedConfiguration").mockResolvedValue(
-    mockConfig
+    mockConfig,
   );
 }

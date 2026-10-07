@@ -8,21 +8,31 @@ import {
   badAuthRateLimiterHandler,
   rootRateLimiter,
 } from "./middlewares/rate-limit";
+import { compatibilityCheckMiddleware } from "./middlewares/compatibilityCheck";
+import { COMPATIBILITY_CHECK_HEADER } from "@monkeytype/contracts";
+import { createETagGenerator } from "./utils/etag";
+import { v4RequestBody } from "./middlewares/utility";
+
+const etagFn = createETagGenerator({ weak: true });
 
 function buildApp(): express.Application {
   const app = express();
 
   app.use(urlencoded({ extended: true }));
   app.use(json());
-  app.use(cors());
+  app.use(cors({ exposedHeaders: [COMPATIBILITY_CHECK_HEADER] }));
   app.use(helmet());
 
   app.set("trust proxy", 1);
 
+  app.use(compatibilityCheckMiddleware);
   app.use(contextMiddleware);
 
   app.use(badAuthRateLimiterHandler);
   app.use(rootRateLimiter);
+  app.use(v4RequestBody);
+
+  app.set("etag", etagFn);
 
   addApiRoutes(app);
 

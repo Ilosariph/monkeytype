@@ -1,9 +1,10 @@
-import request from "supertest";
-import app from "../../../src/app";
+import { describe, it, expect, afterEach, vi } from "vitest";
+import { setup } from "../../__testData__/controller-test";
 import * as PsaDal from "../../../src/dal/psa";
 import * as Prometheus from "../../../src/utils/prometheus";
 import { ObjectId } from "mongodb";
-const mockApp = request(app);
+
+const { mockApp, uid } = setup();
 
 describe("Psa Controller", () => {
   describe("get psa", () => {
@@ -11,8 +12,8 @@ describe("Psa Controller", () => {
     const recordClientVersionMock = vi.spyOn(Prometheus, "recordClientVersion");
 
     afterEach(() => {
-      getPsaMock.mockReset();
-      recordClientVersionMock.mockReset();
+      getPsaMock.mockClear();
+      recordClientVersionMock.mockClear();
     });
 
     it("get psas without authorization", async () => {
@@ -62,7 +63,7 @@ describe("Psa Controller", () => {
     it("get psas with authorization", async () => {
       await mockApp
         .get("/psas")
-        .set("authorization", `Uid 123456789`)
+        .set("Authorization", `Bearer ${uid}`)
         .expect(200);
     });
 

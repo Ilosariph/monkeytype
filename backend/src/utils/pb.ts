@@ -1,12 +1,6 @@
-import _ from "lodash";
-import FunboxList from "../constants/funbox-list";
-
-import {
-  Mode,
-  PersonalBest,
-  PersonalBests,
-} from "@monkeytype/contracts/schemas/shared";
-import { Result as ResultType } from "@monkeytype/contracts/schemas/results";
+import { Mode, PersonalBest, PersonalBests } from "@monkeytype/schemas/shared";
+import { Result as ResultType } from "@monkeytype/schemas/results";
+import { getFunbox } from "@monkeytype/funbox";
 
 export type LbPersonalBests = {
   time: Record<number, Record<string, PersonalBest>>;
@@ -21,26 +15,15 @@ type CheckAndUpdatePbResult = {
 type Result = Omit<ResultType<Mode>, "_id" | "name">;
 
 export function canFunboxGetPb(result: Result): boolean {
-  const funbox = result.funbox;
-  if (funbox === undefined || funbox === "" || funbox === "none") return true;
+  if (result.funbox === undefined || result.funbox.length === 0) return true;
 
-  let ret = true;
-  const resultFunboxes = funbox.split("#");
-  for (const funbox of FunboxList) {
-    if (resultFunboxes.includes(funbox.name)) {
-      if (!funbox.canGetPb) {
-        ret = false;
-      }
-    }
-  }
-
-  return ret;
+  return getFunbox(result.funbox).every((f) => f.canGetPb);
 }
 
 export function checkAndUpdatePb(
   userPersonalBests: PersonalBests,
   lbPersonalBests: LbPersonalBests | undefined,
-  result: Result
+  result: Result,
 ): CheckAndUpdatePbResult {
   const mode = result.mode;
   const mode2 = result.mode2;
@@ -50,7 +33,7 @@ export function checkAndUpdatePb(
   userPb[mode][mode2] ??= [];
 
   const personalBestMatch = (userPb[mode][mode2] as PersonalBest[]).find((pb) =>
-    matchesPersonalBest(result, pb)
+    matchesPersonalBest(result, pb),
   );
 
   let isPb = true;
@@ -62,11 +45,11 @@ export function checkAndUpdatePb(
     (userPb[mode][mode2] as PersonalBest[]).push(buildPersonalBest(result));
   }
 
-  if (!_.isNil(lbPersonalBests)) {
+  if (lbPersonalBests !== undefined && lbPersonalBests !== null) {
     const newLbPb = updateLeaderboardPersonalBests(
       userPb,
       lbPersonalBests,
-      result
+      result,
     );
     if (newLbPb !== null) {
       lbPersonalBests = newLbPb;
@@ -82,7 +65,7 @@ export function checkAndUpdatePb(
 
 function matchesPersonalBest(
   result: Result,
-  personalBest: PersonalBest
+  personalBest: PersonalBest,
 ): boolean {
   if (
     result.difficulty === undefined ||
@@ -114,7 +97,7 @@ function matchesPersonalBest(
 
 function updatePersonalBest(
   personalBest: PersonalBest,
-  result: Result
+  result: Result,
 ): boolean {
   if (personalBest.wpm >= result.wpm) {
     return false;
@@ -179,7 +162,7 @@ function buildPersonalBest(result: Result): PersonalBest {
 export function updateLeaderboardPersonalBests(
   userPersonalBests: PersonalBests,
   lbPersonalBests: LbPersonalBests,
-  result: Result
+  result: Result,
 ): LbPersonalBests | null {
   if (!shouldUpdateLeaderboardPersonalBests(result)) {
     return null;
@@ -200,11 +183,13 @@ export function updateLeaderboardPersonalBests(
       ) {
         bestForEveryLanguage[language] = pb;
       }
-    }
+    },
   );
-  _.each(bestForEveryLanguage, (pb: PersonalBest, language: string) => {
+  Object.entries(bestForEveryLanguage).forEach(([language, pb]) => {
     const languageDoesNotExist = lbPb[mode][mode2]?.[language] === undefined;
-    const languageIsEmpty = _.isEmpty(lbPb[mode][mode2]?.[language]);
+    const languageIsEmpty =
+      lbPb[mode][mode2]?.[language] &&
+      Object.keys(lbPb[mode][mode2][language]).length === 0;
 
     if (
       (languageDoesNotExist ||

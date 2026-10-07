@@ -1,7 +1,7 @@
 {
   "name": "tibetan_1k",
   "rightToLeft": false,
-  "ligatures": true,
+  "joiningScript": true,
   "noLazyMode": true,
   "bcp47": "bo-TI",
   "words": [
@@ -186,7 +186,7 @@
     "ཆོས་གཞི།",
     "བཤད་པ།",
     "ཕན་ཚུན།",
-    "གྲུབ་པ། ",
+    "གྲུབ་པ།",
     "ཕུལ་བྱུང་།",
     "ཆོས་ལུགས།",
     "སྒྱུ་མ།",

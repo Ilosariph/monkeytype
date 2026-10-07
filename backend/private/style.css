@@ -74,13 +74,14 @@ body {
   background-color: #d84b4b;
 }
 
-#save {
+#save,
+#export {
   position: fixed;
   right: 6rem;
   bottom: 3rem;
   background-color: var(--sub-alt-color);
   color: var(--text-color);
-  font-style: bold;
+  font-weight: bold;
   border-radius: 3px;
   padding: 1rem 2rem;
   cursor: pointer;
@@ -90,7 +91,12 @@ body {
   transition: 0.125s;
 }
 
-#save:hover {
+#export {
+  bottom: 9rem;
+}
+
+#save:hover,
+#export:hover {
   background-color: var(--text-color);
   color: var(--bg-color);
 }
@@ -183,10 +189,6 @@ input[type="checkbox"] {
   }
 }
 
-.tooltip:hover .tooltip-text {
-  display: block;
-}
-
 .tooltip-text {
   display: none;
   color: var(--text-color);
@@ -195,4 +197,8 @@ input[type="checkbox"] {
   z-index: 1000;
   padding: 10px;
   border-radius: var(--roundness);
+}
+
+.tooltip:hover .tooltip-text {
+  display: block;
 }

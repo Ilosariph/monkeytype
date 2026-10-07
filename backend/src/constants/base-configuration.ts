@@ -1,4 +1,4 @@
-import { Configuration } from "@monkeytype/contracts/schemas/configuration";
+import { Configuration } from "@monkeytype/schemas/configuration";
 
 /**
  * This is the base schema for the configuration of the API backend.
@@ -96,12 +96,14 @@ export const BASE_CONFIGURATION: Configuration = {
     xpRewardBrackets: [],
   },
   leaderboards: {
+    minTimeTyping: 2 * 60 * 60,
     weeklyXp: {
       enabled: false,
       expirationTimeInDays: 0, // This should atleast be 15
       xpRewardBrackets: [],
     },
   },
+  connections: { enabled: false, maxPerUser: 100 },
 };
 
 type BaseSchema = {
@@ -137,14 +139,14 @@ type Schema<T> = {
   [P in keyof T]: T[P] extends unknown[]
     ? ArraySchema<T[P]>
     : T[P] extends number
-    ? NumberSchema
-    : T[P] extends boolean
-    ? BooleanSchema
-    : T[P] extends string
-    ? StringSchema
-    : T[P] extends object
-    ? ObjectSchema<T[P]>
-    : never;
+      ? NumberSchema
+      : T[P] extends boolean
+        ? BooleanSchema
+        : T[P] extends string
+          ? StringSchema
+          : T[P] extends object
+            ? ObjectSchema<T[P]>
+            : never;
 };
 
 export const CONFIGURATION_FORM_SCHEMA: ObjectSchema<Configuration> = {
@@ -548,6 +550,12 @@ export const CONFIGURATION_FORM_SCHEMA: ObjectSchema<Configuration> = {
       type: "object",
       label: "Leaderboards",
       fields: {
+        minTimeTyping: {
+          type: "number",
+          label: "Minimum typing time the user needs to get on a leaderboard",
+          hint: "Typing time in seconds. Change is only applied after restarting the server.",
+          min: 0,
+        },
         weeklyXp: {
           type: "object",
           label: "Weekly XP",
@@ -593,6 +601,17 @@ export const CONFIGURATION_FORM_SCHEMA: ObjectSchema<Configuration> = {
               },
             },
           },
+        },
+      },
+    },
+    connections: {
+      type: "object",
+      label: "Connections",
+      fields: {
+        enabled: { type: "boolean", label: "Enabled" },
+        maxPerUser: {
+          type: "number",
+          label: "Max Connections per user",
         },
       },
     },

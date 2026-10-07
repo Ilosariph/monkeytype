@@ -13,7 +13,7 @@ apis:
   public@v2:
     root: dist/static/api/public.json
 
-features.openapi:
+openapi:
   theme:
     logo:
       gutter: "2rem"

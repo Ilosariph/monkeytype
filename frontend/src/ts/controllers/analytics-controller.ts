@@ -1,22 +1,17 @@
 import {
   Analytics as AnalyticsType,
-  getAnalytics,
   logEvent,
   setAnalyticsCollectionEnabled,
 } from "firebase/analytics";
-import { app as firebaseApp } from "../firebase";
-import { createErrorMessage } from "../utils/misc";
+import { getAnalytics } from "../firebase";
+import { createErrorMessage } from "../utils/error";
+import { qs } from "../utils/dom";
 
 let analytics: AnalyticsType;
 
-type AcceptedCookies = {
-  security: boolean;
-  analytics: boolean;
-};
-
 export async function log(
   eventName: string,
-  params?: Record<string, string>
+  params?: Record<string, string>,
 ): Promise<void> {
   try {
     logEvent(analytics, eventName, params);
@@ -25,25 +20,16 @@ export async function log(
   }
 }
 
-const lsString = localStorage.getItem("acceptedCookies");
-let acceptedCookies;
-if (lsString !== undefined && lsString !== null && lsString !== "") {
-  acceptedCookies = JSON.parse(lsString) as AcceptedCookies;
-} else {
-  acceptedCookies = null;
-}
-
-if (acceptedCookies !== null) {
-  if (acceptedCookies.analytics) {
-    activateAnalytics();
-  }
-}
-
 export function activateAnalytics(): void {
+  if (analytics !== undefined) {
+    console.warn("Analytics already activated");
+    return;
+  }
+  console.log("Activating Analytics");
   try {
-    analytics = getAnalytics(firebaseApp);
+    analytics = getAnalytics();
     setAnalyticsCollectionEnabled(analytics, true);
-    $("body").append(`
+    qs("body")?.appendHtml(`
     <script
     async
     src="https://www.googletagmanager.com/gtag/js?id=UA-165993088-1"

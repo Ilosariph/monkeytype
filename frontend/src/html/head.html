@@ -1,4 +1,23 @@
 <head>
+  <link rel="preconnect" href="https://api.monkeytype.com" />
+  <link rel="preconnect" href="https://identitytoolkit.googleapis.com" />
+  <link rel="preconnect" href="https://www.google.com" />
+  <link rel="preconnect" href="https://www.gstatic.com" />
+  <link
+    rel="preload"
+    href="/webfonts/RobotoMono-Regular.woff2"
+    type="font/woff2"
+    as="font"
+    crossorigin
+  />
+  <link
+    rel="preload"
+    href="/webfonts/LexendDeca-Regular.woff2"
+    type="font/woff2"
+    as="font"
+    crossorigin
+  />
+
   <script>
     document.addEventListener("keydown", function (e) {
       if (e.key == "Escape") e.preventDefault();
@@ -7,7 +26,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Monkeytype | A minimalistic, customizable typing test</title>
-  <!-- default colors in case theme file fails to load -->
+  <!-- fallback theme colors -->
   <style>
     :root {
       --bg-color: #323437;
@@ -20,6 +39,7 @@
       --error-extra-color: #7e2a33;
       --colorful-error-color: #ca4754;
       --colorful-error-extra-color: #7e2a33;
+      --nav-focus-opacity: 0;
     }
   </style>
   <link
@@ -27,12 +47,6 @@
     type="image/x-icon"
     sizes="32x32"
     href="/images/favicon/favicon.ico"
-  />
-  <link
-    id="favicon"
-    rel="shortcut icon"
-    type="image/svg+xml"
-    href="/images/favicon/favicon.svg"
   />
   <link
     rel="apple-touch-icon"
@@ -49,8 +63,6 @@
     name="msapplication-config"
     content="/images/favicon/browserconfig.xml"
   />
-  <meta id="metaThemeColor" name="theme-color" content="#e2b714" />
-  <link rel="manifest" href="/manifest.json" />
   <meta
     name="name"
     content="Monkeytype | A minimalistic, customizable typing test"
@@ -60,9 +72,14 @@
     name="description"
     content="The most customizable typing test website with a minimal design and a ton of features. Test yourself in various modes, track your progress and improve your speed."
   />
-  <meta
+  <!-- <meta
     name="keywords"
     content="typing speed test, typing speedtest, typing test, speedtest, speed test, typing, test, typing-test, typing test, monkey-type, monkeytype, monkey type, monkey-types, monkeytypes, monkey types, types, monkey, type, miodec, wpm, words per minute, typing website, minimalistic, custom typing test, customizable, customisable, themes, random words, smooth caret, smooth, new, new typing site, new typing website, minimalist typing website, minimalistic typing website, minimalist typing test"
+
+  /> -->
+  <meta
+    name="keywords"
+    content="typing test, monkeytype, speed test, typing, test, speed"
   />
   <meta name="author" content="Miodec" />
   <meta
@@ -90,5 +107,25 @@
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="darkreader-lock" />
   <meta http-equiv="Cache-Control" content="no-store" />
-  <link rel="stylesheet" href="styles/index.scss" />
+  <style>
+    /* 
+      Layer order NEEDS to be here and one layer per line.
+      This is because vite changes the order of the css imports,
+      and the layer definition needs to be at the very very top, otherwise things break.
+    */
+    @layer normalize;
+    @layer theme;
+    @layer base;
+    @layer components;
+    @layer properties;
+    @layer vendor;
+    @layer custom-styles;
+    @layer hidden;
+    @layer utilities;
+  </style>
+  <link rel="stylesheet" class="testtesttest" href="styles/index.scss" />
+  <link rel="stylesheet" class="testtest" href="styles/tailwind.css" />
+  <link rel="stylesheet" class="test" href="styles/vendor.scss" />
+
+  <style class="customFont" type="text/css"></style>
 </head>

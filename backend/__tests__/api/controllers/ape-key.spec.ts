@@ -1,14 +1,13 @@
-import request, { Test as SuperTest } from "supertest";
-import app from "../../../src/app";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { setup } from "../../__testData__/controller-test";
+import { Test as SuperTest } from "supertest";
 import * as ApeKeyDal from "../../../src/dal/ape-keys";
 import { ObjectId } from "mongodb";
 import * as Configuration from "../../../src/init/configuration";
 import * as UserDal from "../../../src/dal/user";
-import _ from "lodash";
 
-const mockApp = request(app);
+const { mockApp, uid } = setup();
 const configuration = Configuration.getCachedConfiguration();
-const uid = new ObjectId().toHexString();
 
 describe("ApeKeyController", () => {
   const getUserMock = vi.spyOn(UserDal, "getPartialUser");
@@ -21,7 +20,7 @@ describe("ApeKeyController", () => {
   });
 
   afterEach(() => {
-    getUserMock.mockReset();
+    getUserMock.mockClear();
     vi.useRealTimers();
   });
 
@@ -29,7 +28,7 @@ describe("ApeKeyController", () => {
     const getApeKeysMock = vi.spyOn(ApeKeyDal, "getApeKeys");
 
     afterEach(() => {
-      getApeKeysMock.mockReset();
+      getApeKeysMock.mockClear();
     });
 
     it("should get the users config", async () => {
@@ -41,7 +40,7 @@ describe("ApeKeyController", () => {
       //WHEN
       const { body } = await mockApp
         .get("/ape-keys")
-        .set("authorization", `Uid ${uid}`)
+        .set("Authorization", `Bearer ${uid}`)
         .expect(200);
 
       //THEN
@@ -66,12 +65,12 @@ describe("ApeKeyController", () => {
     });
     it("should fail if apeKeys endpoints are disabled", async () => {
       await expectFailForDisabledEndpoint(
-        mockApp.get("/ape-keys").set("authorization", `Uid ${uid}`)
+        mockApp.get("/ape-keys").set("Authorization", `Bearer ${uid}`),
       );
     });
     it("should fail if user has no apeKey permissions", async () => {
       await expectFailForNoPermissions(
-        mockApp.get("/ape-keys").set("authorization", `Uid ${uid}`)
+        mockApp.get("/ape-keys").set("Authorization", `Bearer ${uid}`),
       );
     });
   });
@@ -85,8 +84,8 @@ describe("ApeKeyController", () => {
     });
 
     afterEach(() => {
-      addApeKeyMock.mockReset();
-      countApeKeysMock.mockReset();
+      addApeKeyMock.mockClear();
+      countApeKeysMock.mockClear();
     });
 
     it("should add ape key", async () => {
@@ -96,7 +95,7 @@ describe("ApeKeyController", () => {
       //WHEN
       const { body } = await mockApp
         .post("/ape-keys")
-        .set("authorization", `Uid ${uid}`)
+        .set("Authorization", `Bearer ${uid}`)
         .send({ name: "test", enabled: true })
         .expect(200);
 
@@ -123,7 +122,7 @@ describe("ApeKeyController", () => {
           name: "test",
           uid: uid,
           useCount: 0,
-        })
+        }),
       );
     });
     it("should fail without mandatory properties", async () => {
@@ -131,7 +130,7 @@ describe("ApeKeyController", () => {
       const { body } = await mockApp
         .post("/ape-keys")
         .send({})
-        .set("authorization", `Uid ${uid}`)
+        .set("Authorization", `Bearer ${uid}`)
         .expect(422);
 
       //THEN
@@ -145,7 +144,7 @@ describe("ApeKeyController", () => {
       const { body } = await mockApp
         .post("/ape-keys")
         .send({ name: "test", enabled: true, extra: "value" })
-        .set("authorization", `Uid ${uid}`)
+        .set("Authorization", `Bearer ${uid}`)
         .expect(422);
 
       //THEN
@@ -163,12 +162,12 @@ describe("ApeKeyController", () => {
       const { body } = await mockApp
         .post("/ape-keys")
         .send({ name: "test", enabled: false })
-        .set("authorization", `Uid ${uid}`)
+        .set("Authorization", `Bearer ${uid}`)
         .expect(409);
 
       //THEN
       expect(body.message).toEqual(
-        "Maximum number of ApeKeys have been generated"
+        "Maximum number of ApeKeys have been generated",
       );
     });
     it("should fail if apeKeys endpoints are disabled", async () => {
@@ -176,7 +175,7 @@ describe("ApeKeyController", () => {
         mockApp
           .post("/ape-keys")
           .send({ name: "test", enabled: false })
-          .set("authorization", `Uid ${uid}`)
+          .set("Authorization", `Bearer ${uid}`),
       );
     });
     it("should fail if user has no apeKey permissions", async () => {
@@ -184,7 +183,7 @@ describe("ApeKeyController", () => {
         mockApp
           .post("/ape-keys")
           .send({ name: "test", enabled: false })
-          .set("authorization", `Uid ${uid}`)
+          .set("Authorization", `Bearer ${uid}`),
       );
     });
   });
@@ -194,7 +193,7 @@ describe("ApeKeyController", () => {
     const apeKeyId = new ObjectId().toHexString();
 
     afterEach(() => {
-      editApeKeyMock.mockReset();
+      editApeKeyMock.mockClear();
     });
 
     it("should edit ape key", async () => {
@@ -205,7 +204,7 @@ describe("ApeKeyController", () => {
       const { body } = await mockApp
         .patch(`/ape-keys/${apeKeyId}`)
         .send({ name: "new", enabled: false })
-        .set("authorization", `Uid ${uid}`)
+        .set("Authorization", `Bearer ${uid}`)
         .expect(200);
 
       //THEN
@@ -220,7 +219,7 @@ describe("ApeKeyController", () => {
       const { body } = await mockApp
         .patch(`/ape-keys/${apeKeyId}`)
         .send({ name: "new" })
-        .set("authorization", `Uid ${uid}`)
+        .set("Authorization", `Bearer ${uid}`)
         .expect(200);
 
       //THEN
@@ -229,7 +228,7 @@ describe("ApeKeyController", () => {
         uid,
         apeKeyId,
         "new",
-        undefined
+        undefined,
       );
     });
     it("should fail with missing path", async () => {
@@ -238,7 +237,7 @@ describe("ApeKeyController", () => {
       //WHEN
       await mockApp
         .patch(`/ape-keys/`)
-        .set("authorization", `Uid ${uid}`)
+        .set("Authorization", `Bearer ${uid}`)
         .expect(404);
     });
     it("should fail with extra properties", async () => {
@@ -248,7 +247,7 @@ describe("ApeKeyController", () => {
       const { body } = await mockApp
         .patch(`/ape-keys/${apeKeyId}`)
         .send({ name: "new", extra: "value" })
-        .set("authorization", `Uid ${uid}`)
+        .set("Authorization", `Bearer ${uid}`)
         .expect(422);
 
       //THEN
@@ -262,7 +261,7 @@ describe("ApeKeyController", () => {
         mockApp
           .patch(`/ape-keys/${apeKeyId}`)
           .send({ name: "test", enabled: false })
-          .set("authorization", `Uid ${uid}`)
+          .set("Authorization", `Bearer ${uid}`),
       );
     });
     it("should fail if user has no apeKey permissions", async () => {
@@ -270,7 +269,7 @@ describe("ApeKeyController", () => {
         mockApp
           .patch(`/ape-keys/${apeKeyId}`)
           .send({ name: "test", enabled: false })
-          .set("authorization", `Uid ${uid}`)
+          .set("Authorization", `Bearer ${uid}`),
       );
     });
   });
@@ -279,7 +278,7 @@ describe("ApeKeyController", () => {
     const apeKeyId = new ObjectId().toHexString();
 
     afterEach(() => {
-      deleteApeKeyMock.mockReset();
+      deleteApeKeyMock.mockClear();
     });
 
     it("should delete ape key", async () => {
@@ -289,7 +288,7 @@ describe("ApeKeyController", () => {
       //WHEN
       const { body } = await mockApp
         .delete(`/ape-keys/${apeKeyId}`)
-        .set("authorization", `Uid ${uid}`)
+        .set("Authorization", `Bearer ${uid}`)
         .expect(200);
 
       //THEN
@@ -302,14 +301,14 @@ describe("ApeKeyController", () => {
       //WHEN
       await mockApp
         .delete(`/ape-keys/`)
-        .set("authorization", `Uid ${uid}`)
+        .set("Authorization", `Bearer ${uid}`)
         .expect(404);
     });
     it("should fail if apeKeys endpoints are disabled", async () => {
       await expectFailForDisabledEndpoint(
         mockApp
           .delete(`/ape-keys/${apeKeyId}`)
-          .set("authorization", `Uid ${uid}`)
+          .set("Authorization", `Bearer ${uid}`),
       );
     });
 
@@ -317,7 +316,7 @@ describe("ApeKeyController", () => {
       await expectFailForNoPermissions(
         mockApp
           .delete(`/ape-keys/${apeKeyId}`)
-          .set("authorization", `Uid ${uid}`)
+          .set("Authorization", `Bearer ${uid}`),
       );
     });
   });
@@ -325,7 +324,7 @@ describe("ApeKeyController", () => {
     getUserMock.mockResolvedValue(user(uid, { canManageApeKeys: false }));
     const { body } = await call.expect(403);
     expect(body.message).toEqual(
-      "You have lost access to ape keys, please contact support"
+      "You have lost access to ape keys, please contact support",
     );
   }
   async function expectFailForDisabledEndpoint(call: SuperTest): Promise<void> {
@@ -337,7 +336,7 @@ describe("ApeKeyController", () => {
 
 function apeKeyDb(
   uid: string,
-  data?: Partial<ApeKeyDal.DBApeKey>
+  data?: Partial<ApeKeyDal.DBApeKey>,
 ): ApeKeyDal.DBApeKey {
   return {
     _id: new ObjectId(),
@@ -354,12 +353,15 @@ function apeKeyDb(
 }
 
 async function enableApeKeysEndpoints(enabled: boolean): Promise<void> {
-  const mockConfig = _.merge(await configuration, {
-    apeKeys: { endpointsEnabled: enabled, maxKeysPerUser: 1 },
-  });
+  const mockConfig = await configuration;
+  mockConfig.apeKeys = {
+    ...mockConfig.apeKeys,
+    endpointsEnabled: enabled,
+    maxKeysPerUser: 1,
+  };
 
   vi.spyOn(Configuration, "getCachedConfiguration").mockResolvedValue(
-    mockConfig
+    mockConfig,
   );
 }
 

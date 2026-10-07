@@ -1,21 +1,16 @@
-import _ from "lodash";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { setup } from "../../__testData__/controller-test";
 import { ObjectId } from "mongodb";
-import request from "supertest";
-import app from "../../../src/app";
 import * as LeaderboardDal from "../../../src/dal/leaderboards";
+import * as ConnectionsDal from "../../../src/dal/connections";
 import * as DailyLeaderboards from "../../../src/utils/daily-leaderboards";
 import * as WeeklyXpLeaderboard from "../../../src/services/weekly-xp-leaderboard";
 import * as Configuration from "../../../src/init/configuration";
 import { mockAuthenticateWithApeKey } from "../../__testData__/auth";
-import {
-  LeaderboardEntry,
-  XpLeaderboardEntry,
-  XpLeaderboardRank,
-} from "@monkeytype/contracts/schemas/leaderboards";
+import { XpLeaderboardEntry } from "@monkeytype/schemas/leaderboards";
 
-const mockApp = request(app);
+const { mockApp, uid } = setup();
 const configuration = Configuration.getCachedConfiguration();
-const uid = new ObjectId().toHexString();
 
 const allModes = [
   "10",
@@ -33,41 +28,52 @@ const allModes = [
 describe("Loaderboard Controller", () => {
   describe("get leaderboard", () => {
     const getLeaderboardMock = vi.spyOn(LeaderboardDal, "get");
+    const getLeaderboardCountMock = vi.spyOn(LeaderboardDal, "getCount");
 
     beforeEach(() => {
-      getLeaderboardMock.mockReset();
+      getLeaderboardMock.mockClear();
+      getLeaderboardCountMock.mockClear();
+      getLeaderboardCountMock.mockResolvedValue(42);
     });
 
     it("should get for english time 60", async () => {
       //GIVEN
 
-      const resultData = [
-        {
-          wpm: 20,
-          acc: 90,
-          timestamp: 1000,
-          raw: 92,
-          consistency: 80,
-          uid: "user1",
-          name: "user1",
-          discordId: "discordId",
-          discordAvatar: "discordAvatar",
-          rank: 1,
-          badgeId: 1,
-          isPremium: true,
-        },
-        {
-          wpm: 10,
-          acc: 80,
-          timestamp: 1200,
-          raw: 82,
-          uid: "user2",
-          name: "user2",
-          rank: 2,
-        },
-      ];
-      const mockData = resultData.map((it) => ({ ...it, _id: new ObjectId() }));
+      const resultData = {
+        count: 42,
+        pageSize: 50,
+        entries: [
+          {
+            wpm: 20,
+            acc: 90,
+            timestamp: 1000,
+            raw: 92,
+            consistency: 80,
+            uid: "user1",
+            name: "user1",
+            discordId: "discordId",
+            discordAvatar: "discordAvatar",
+            rank: 1,
+            badgeId: 1,
+            isPremium: true,
+          },
+          {
+            wpm: 10,
+            acc: 80,
+            timestamp: 1200,
+            raw: 82,
+            uid: "user2",
+            name: "user2",
+            rank: 2,
+          },
+        ],
+      };
+      const mockData = resultData.entries.map((it) => ({
+        ...it,
+        _id: new ObjectId(),
+      }));
       getLeaderboardMock.mockResolvedValue(mockData);
+      getLeaderboardCountMock.mockResolvedValue(42);
 
       //WHEN
 
@@ -87,15 +93,25 @@ describe("Loaderboard Controller", () => {
         "60",
         "english",
         0,
-        50
+        50,
+        false,
+        undefined,
+      );
+
+      expect(getLeaderboardCountMock).toHaveBeenCalledWith(
+        "time",
+        "60",
+        "english",
+        undefined,
       );
     });
 
-    it("should get for english time 60 with skip and limit", async () => {
+    it("should get for english time 60 with page", async () => {
       //GIVEN
       getLeaderboardMock.mockResolvedValue([]);
-      const skip = 23;
-      const limit = 42;
+      getLeaderboardCountMock.mockResolvedValue(0);
+      const page = 0;
+      const pageSize = 25;
 
       //WHEN
 
@@ -105,48 +121,94 @@ describe("Loaderboard Controller", () => {
           language: "english",
           mode: "time",
           mode2: "60",
-          skip,
-          limit,
+          page,
+          pageSize,
         })
         .expect(200);
 
       //THEN
       expect(body).toEqual({
         message: "Leaderboard retrieved",
-        data: [],
+        data: {
+          count: 0,
+          pageSize: 25,
+          entries: [],
+        },
       });
 
       expect(getLeaderboardMock).toHaveBeenCalledWith(
         "time",
         "60",
         "english",
-        skip,
-        limit
+        page,
+        pageSize,
+        false,
+        undefined,
       );
     });
 
-    it("should get for mode", async () => {
+    it("should get for friendsOnly", async () => {
+      //GIVEN
+      await enableConnectionsFeature(true);
       getLeaderboardMock.mockResolvedValue([]);
-      for (const mode of ["time", "words", "quote", "zen", "custom"]) {
-        const response = await mockApp
-          .get("/leaderboards")
-          .query({ language: "english", mode, mode2: "custom" });
-        expect(response.status, "for mode " + mode).toEqual(200);
-      }
-    });
+      getLeaderboardCountMock.mockResolvedValue(2);
 
-    it("should get for mode2", async () => {
-      getLeaderboardMock.mockResolvedValue([]);
-      for (const mode2 of allModes) {
-        const response = await mockApp.get("/leaderboards").query({
+      //WHEN
+
+      const { body } = await mockApp
+        .get("/leaderboards")
+        .set("Authorization", `Bearer ${uid}`)
+        .query({
           language: "english",
-          mode: "words",
-          mode2,
-        });
+          mode: "time",
+          mode2: "60",
+          friendsOnly: true,
+        })
+        .expect(200);
 
-        expect(response.status, "for mode2 " + mode2).toEqual(200);
-      }
+      //THEN
+      expect(body.data.count).toEqual(2);
+
+      expect(getLeaderboardMock).toHaveBeenCalledWith(
+        "time",
+        "60",
+        "english",
+        0,
+        50,
+        false,
+        uid,
+      );
+      expect(getLeaderboardCountMock).toHaveBeenCalledWith(
+        "time",
+        "60",
+        "english",
+        uid,
+      );
     });
+
+    describe("should get for modes", async () => {
+      beforeEach(() => {
+        getLeaderboardMock.mockResolvedValue([]);
+      });
+
+      const testCases = [
+        { mode: "time", mode2: "15", language: "english", expectStatus: 200 },
+        { mode: "time", mode2: "60", language: "english", expectStatus: 200 },
+        { mode: "time", mode2: "30", language: "english", expectStatus: 404 },
+        { mode: "words", mode2: "15", language: "english", expectStatus: 404 },
+        { mode: "time", mode2: "15", language: "spanish", expectStatus: 404 },
+      ];
+      it.for(testCases)(
+        `expect $expectStatus for mode $mode, mode2 $mode2, lang $language`,
+        async ({ mode, mode2, language, expectStatus }) => {
+          await mockApp
+            .get("/leaderboards")
+            .query({ language, mode, mode2 })
+            .expect(expectStatus);
+        },
+      );
+    });
+
     it("fails for missing query", async () => {
       const { body } = await mockApp.get("/leaderboards").expect(422);
 
@@ -166,19 +228,19 @@ describe("Loaderboard Controller", () => {
           language: "en?gli.sh",
           mode: "unknownMode",
           mode2: "unknownMode2",
-          skip: -1,
-          limit: 100,
+          page: -1,
+          pageSize: 500,
         })
         .expect(422);
 
       expect(body).toEqual({
         message: "Invalid query schema",
         validationErrors: [
-          '"language" Can only contain letters [a-zA-Z0-9_+]',
+          '"language" Invalid enum value. Must be a supported language',
           `"mode" Invalid enum value. Expected 'time' | 'words' | 'quote' | 'custom' | 'zen', received 'unknownMode'`,
           '"mode2" Needs to be a number or a number represented as a string e.g. "10".',
-          '"skip" Number must be greater than or equal to 0',
-          '"limit" Number must be less than or equal to 50',
+          '"page" Number must be greater than or equal to 0',
+          '"pageSize" Number must be less than or equal to 200',
         ],
       });
     });
@@ -213,7 +275,7 @@ describe("Loaderboard Controller", () => {
         .expect(503);
 
       expect(body.message).toEqual(
-        "Leaderboard is currently updating. Please try again in a few seconds."
+        "Leaderboard is currently updating. Please try again in a few seconds.",
       );
     });
   });
@@ -222,7 +284,7 @@ describe("Loaderboard Controller", () => {
     const getLeaderboardRankMock = vi.spyOn(LeaderboardDal, "getRank");
 
     afterEach(() => {
-      getLeaderboardRankMock.mockReset();
+      getLeaderboardRankMock.mockClear();
     });
 
     it("fails withouth authentication", async () => {
@@ -237,7 +299,7 @@ describe("Loaderboard Controller", () => {
 
       const entryId = new ObjectId();
       const resultEntry = {
-        _id: entryId.toHexString(),
+        _id: entryId,
         wpm: 10,
         acc: 80,
         timestamp: 1200,
@@ -246,36 +308,85 @@ describe("Loaderboard Controller", () => {
         name: "user2",
         rank: 2,
       };
-      getLeaderboardRankMock.mockResolvedValue({
-        count: 1000,
-        rank: 50,
-        entry: resultEntry,
-      });
+      getLeaderboardRankMock.mockResolvedValue(resultEntry);
 
       //WHEN
 
       const { body } = await mockApp
         .get("/leaderboards/rank")
         .query({ language: "english", mode: "time", mode2: "60" })
-        .set("authorization", `Uid ${uid}`)
+        .set("Authorization", `Bearer ${uid}`)
         .expect(200);
 
       //THEN
       expect(body).toEqual({
         message: "Rank retrieved",
-        data: {
-          count: 1000,
-          rank: 50,
-          entry: resultEntry,
-        },
+        data: { ...resultEntry, _id: undefined },
       });
 
       expect(getLeaderboardRankMock).toHaveBeenCalledWith(
         "time",
         "60",
         "english",
-        uid
+        uid,
+        false,
       );
+    });
+    it("should get for english time 60 friends only", async () => {
+      //GIVEN
+      await enableConnectionsFeature(true);
+      getLeaderboardRankMock.mockResolvedValue({} as any);
+
+      //WHEN
+      await mockApp
+        .get("/leaderboards/rank")
+        .query({
+          language: "english",
+          mode: "time",
+          mode2: "60",
+          friendsOnly: true,
+        })
+        .set("Authorization", `Bearer ${uid}`)
+        .expect(200);
+
+      //THEN
+      expect(getLeaderboardRankMock).toHaveBeenCalledWith(
+        "time",
+        "60",
+        "english",
+        uid,
+        true,
+      );
+    });
+    it("should get null if no rank", async () => {
+      //GIVEN
+      await enableConnectionsFeature(true);
+      getLeaderboardRankMock.mockResolvedValue(null);
+
+      //WHEN
+      const { body } = await mockApp
+        .get("/leaderboards/rank")
+        .query({
+          language: "english",
+          mode: "time",
+          mode2: "60",
+          friendsOnly: true,
+        })
+        .set("Authorization", `Bearer ${uid}`)
+        .expect(200);
+
+      //THEN
+      expect(getLeaderboardRankMock).toHaveBeenCalledWith(
+        "time",
+        "60",
+        "english",
+        uid,
+        true,
+      );
+      expect(body).toEqual({
+        message: "Rank retrieved",
+        data: null,
+      });
     });
     it("should get with ape key", async () => {
       await acceptApeKeys(true);
@@ -284,7 +395,7 @@ describe("Loaderboard Controller", () => {
       await mockApp
         .get("/leaderboards/rank")
         .query({ language: "english", mode: "time", mode2: "60" })
-        .set("authorization", "ApeKey " + apeKey)
+        .set("authorization", `ApeKey ${apeKey}`)
         .expect(200);
     });
     it("should get for mode", async () => {
@@ -292,9 +403,9 @@ describe("Loaderboard Controller", () => {
       for (const mode of ["time", "words", "quote", "zen", "custom"]) {
         const response = await mockApp
           .get("/leaderboards/rank")
-          .set("authorization", `Uid ${uid}`)
+          .set("Authorization", `Bearer ${uid}`)
           .query({ language: "english", mode, mode2: "custom" });
-        expect(response.status, "for mode " + mode).toEqual(200);
+        expect(response.status, `for mode ${mode}`).toEqual(200);
       }
     });
 
@@ -303,16 +414,16 @@ describe("Loaderboard Controller", () => {
       for (const mode2 of allModes) {
         const response = await mockApp
           .get("/leaderboards/rank")
-          .set("authorization", `Uid ${uid}`)
+          .set("Authorization", `Bearer ${uid}`)
           .query({ language: "english", mode: "words", mode2 });
 
-        expect(response.status, "for mode2 " + mode2).toEqual(200);
+        expect(response.status, `for mode2 ${mode2}`).toEqual(200);
       }
     });
     it("fails for missing query", async () => {
       const { body } = await mockApp
         .get("/leaderboards/rank")
-        .set("authorization", `Uid ${uid}`)
+        .set("Authorization", `Bearer ${uid}`)
         .expect(422);
 
       expect(body).toEqual({
@@ -332,13 +443,13 @@ describe("Loaderboard Controller", () => {
           mode: "unknownMode",
           mode2: "unknownMode2",
         })
-        .set("authorization", `Uid ${uid}`)
+        .set("Authorization", `Bearer ${uid}`)
         .expect(422);
 
       expect(body).toEqual({
         message: "Invalid query schema",
         validationErrors: [
-          '"language" Can only contain letters [a-zA-Z0-9_+]',
+          '"language" Invalid enum value. Must be a supported language',
           `"mode" Invalid enum value. Expected 'time' | 'words' | 'quote' | 'custom' | 'zen', received 'unknownMode'`,
           '"mode2" Needs to be a number or a number represented as a string e.g. "10".',
         ],
@@ -353,7 +464,7 @@ describe("Loaderboard Controller", () => {
           mode2: "60",
           extra: "value",
         })
-        .set("authorization", `Uid ${uid}`)
+        .set("Authorization", `Bearer ${uid}`)
         .expect(422);
 
       expect(body).toEqual({
@@ -373,11 +484,11 @@ describe("Loaderboard Controller", () => {
           mode: "time",
           mode2: "60",
         })
-        .set("authorization", `Uid ${uid}`)
+        .set("Authorization", `Bearer ${uid}`)
         .expect(503);
 
       expect(body.message).toEqual(
-        "Leaderboard is currently updating. Please try again in a few seconds."
+        "Leaderboard is currently updating. Please try again in a few seconds.",
       );
     });
   });
@@ -385,18 +496,24 @@ describe("Loaderboard Controller", () => {
   describe("get daily leaderboard", () => {
     const getDailyLeaderboardMock = vi.spyOn(
       DailyLeaderboards,
-      "getDailyLeaderboard"
+      "getDailyLeaderboard",
     );
+    const getFriendsUidsMock = vi.spyOn(ConnectionsDal, "getFriendsUids");
+    const getResultMock = vi.fn();
 
     beforeEach(async () => {
-      getDailyLeaderboardMock.mockReset();
+      [getDailyLeaderboardMock, getFriendsUidsMock, getResultMock].forEach(
+        (it) => it.mockClear(),
+      );
       vi.useFakeTimers();
       vi.setSystemTime(1722606812000);
       await dailyLeaderboardEnabled(true);
 
       getDailyLeaderboardMock.mockReturnValue({
-        getResults: () => Promise.resolve([]),
+        getResults: getResultMock,
       } as any);
+
+      getResultMock.mockResolvedValue(null);
     });
 
     afterEach(() => {
@@ -408,36 +525,39 @@ describe("Loaderboard Controller", () => {
       const lbConf = (await configuration).dailyLeaderboards;
       const premiumEnabled = (await configuration).users.premium.enabled;
 
-      const resultData: LeaderboardEntry[] = [
-        {
-          name: "user1",
-          rank: 1,
-          wpm: 20,
-          acc: 90,
-          timestamp: 1000,
-          raw: 92,
-          consistency: 80,
-          uid: "user1",
-          discordId: "discordId",
-          discordAvatar: "discordAvatar",
-        },
-        {
-          wpm: 10,
-          rank: 2,
-          acc: 80,
-          timestamp: 1200,
-          raw: 82,
-          consistency: 72,
-          uid: "user2",
-          name: "user2",
-        },
-      ];
+      const resultData = {
+        minWpm: 10,
+        entries: [
+          {
+            name: "user1",
+            rank: 1,
+            wpm: 20,
+            acc: 90,
+            timestamp: 1000,
+            raw: 92,
+            consistency: 80,
+            uid: "user1",
+            discordId: "discordId",
+            discordAvatar: "discordAvatar",
+          },
+          {
+            wpm: 10,
+            rank: 2,
+            acc: 80,
+            timestamp: 1200,
+            raw: 82,
+            consistency: 72,
+            uid: "user2",
+            name: "user2",
+          },
+        ],
+      };
 
-      const getResultMock = vi.fn();
-      getResultMock.mockResolvedValue(resultData);
-      getDailyLeaderboardMock.mockReturnValue({
-        getResults: getResultMock,
-      } as any);
+      getResultMock.mockResolvedValue({
+        count: 2,
+        minWpm: 10,
+        entries: resultData,
+      });
 
       //WHEN
       const { body } = await mockApp
@@ -448,7 +568,12 @@ describe("Loaderboard Controller", () => {
       //THEN
       expect(body).toEqual({
         message: "Daily leaderboard retrieved",
-        data: resultData,
+        data: {
+          count: 2,
+          pageSize: 50,
+          minWpm: 10,
+          entries: resultData,
+        },
       });
 
       expect(getDailyLeaderboardMock).toHaveBeenCalledWith(
@@ -456,10 +581,16 @@ describe("Loaderboard Controller", () => {
         "time",
         "60",
         lbConf,
-        -1
+        -1,
       );
 
-      expect(getResultMock).toHaveBeenCalledWith(0, 49, lbConf, premiumEnabled);
+      expect(getResultMock).toHaveBeenCalledWith(
+        0,
+        50,
+        lbConf,
+        premiumEnabled,
+        undefined,
+      );
     });
 
     it("should get for english time 60 for yesterday", async () => {
@@ -480,7 +611,12 @@ describe("Loaderboard Controller", () => {
       //THEN
       expect(body).toEqual({
         message: "Daily leaderboard retrieved",
-        data: [],
+        data: {
+          entries: [],
+          count: 0,
+          pageSize: 50,
+          minWpm: 0,
+        },
       });
 
       expect(getDailyLeaderboardMock).toHaveBeenCalledWith(
@@ -488,21 +624,17 @@ describe("Loaderboard Controller", () => {
         "time",
         "60",
         lbConf,
-        1722470400000
+        1722470400000,
       );
     });
-    it("should get for english time 60 with skip and limit", async () => {
+    it("should get for english time 60 with page and pageSize", async () => {
       //GIVEN
       const lbConf = (await configuration).dailyLeaderboards;
       const premiumEnabled = (await configuration).users.premium.enabled;
-      const limit = 23;
-      const skip = 42;
+      const page = 2;
+      const pageSize = 25;
 
-      const getResultMock = vi.fn();
-      getResultMock.mockResolvedValue([]);
-      getDailyLeaderboardMock.mockReturnValue({
-        getResults: getResultMock,
-      } as any);
+      getResultMock.mockResolvedValue({ entries: [] });
 
       //WHEN
       const { body } = await mockApp
@@ -511,15 +643,20 @@ describe("Loaderboard Controller", () => {
           language: "english",
           mode: "time",
           mode2: "60",
-          skip,
-          limit,
+          page,
+          pageSize,
         })
         .expect(200);
 
       //THEN
       expect(body).toEqual({
         message: "Daily leaderboard retrieved",
-        data: [],
+        data: {
+          entries: [],
+          count: 0,
+          pageSize,
+          minWpm: 0,
+        },
       });
 
       expect(getDailyLeaderboardMock).toHaveBeenCalledWith(
@@ -527,14 +664,57 @@ describe("Loaderboard Controller", () => {
         "time",
         "60",
         lbConf,
-        -1
+        -1,
       );
 
       expect(getResultMock).toHaveBeenCalledWith(
-        skip,
-        skip + limit - 1,
+        page,
+        pageSize,
         lbConf,
-        premiumEnabled
+        premiumEnabled,
+        undefined,
+      );
+    });
+
+    it("should get for friends", async () => {
+      //GIVEN
+      const lbConf = (await configuration).dailyLeaderboards;
+      const premiumEnabled = (await configuration).users.premium.enabled;
+      await enableConnectionsFeature(true);
+      const friends = [
+        new ObjectId().toHexString(),
+        new ObjectId().toHexString(),
+      ];
+      getFriendsUidsMock.mockResolvedValue(friends);
+
+      //WHEN
+      await mockApp
+        .get("/leaderboards/daily")
+        .set("Authorization", `Bearer ${uid}`)
+        .query({
+          language: "english",
+          mode: "time",
+          mode2: "60",
+          friendsOnly: true,
+        })
+        .expect(200);
+
+      //THEN
+
+      expect(getDailyLeaderboardMock).toHaveBeenCalledWith(
+        "english",
+        "time",
+        "60",
+        lbConf,
+        -1,
+      );
+
+      expect(getResultMock).toHaveBeenCalledWith(
+        0,
+        50,
+        lbConf,
+        premiumEnabled,
+        friends,
       );
     });
 
@@ -561,7 +741,7 @@ describe("Loaderboard Controller", () => {
       const { body } = await mockApp.get("/leaderboards/daily").expect(503);
 
       expect(body.message).toEqual(
-        "Daily leaderboards are not available at this time."
+        "Daily leaderboards are not available at this time.",
       );
     });
 
@@ -570,7 +750,7 @@ describe("Loaderboard Controller", () => {
         const response = await mockApp
           .get("/leaderboards/daily")
           .query({ language: "english", mode, mode2: "custom" });
-        expect(response.status, "for mode " + mode).toEqual(200);
+        expect(response.status, `for mode ${mode}`).toEqual(200);
       }
     });
 
@@ -580,9 +760,10 @@ describe("Loaderboard Controller", () => {
           .get("/leaderboards/daily")
           .query({ language: "english", mode: "words", mode2 });
 
-        expect(response.status, "for mode2 " + mode2).toEqual(200);
+        expect(response.status, `for mode2 ${mode2}`).toEqual(200);
       }
     });
+
     it("fails for missing query", async () => {
       const { body } = await mockApp.get("/leaderboards").expect(422);
 
@@ -595,6 +776,7 @@ describe("Loaderboard Controller", () => {
         ],
       });
     });
+
     it("fails for invalid query", async () => {
       const { body } = await mockApp
         .get("/leaderboards/daily")
@@ -608,7 +790,7 @@ describe("Loaderboard Controller", () => {
       expect(body).toEqual({
         message: "Invalid query schema",
         validationErrors: [
-          '"language" Can only contain letters [a-zA-Z0-9_+]',
+          '"language" Invalid enum value. Must be a supported language',
           `"mode" Invalid enum value. Expected 'time' | 'words' | 'quote' | 'custom' | 'zen', received 'unknownMode'`,
           '"mode2" Needs to be a number or a number represented as a string e.g. "10".',
         ],
@@ -645,7 +827,7 @@ describe("Loaderboard Controller", () => {
         .expect(404);
 
       expect(body.message).toEqual(
-        "There is no daily leaderboard for this mode"
+        "There is no daily leaderboard for this mode",
       );
     });
   });
@@ -653,18 +835,23 @@ describe("Loaderboard Controller", () => {
   describe("get daily leaderboard rank", () => {
     const getDailyLeaderboardMock = vi.spyOn(
       DailyLeaderboards,
-      "getDailyLeaderboard"
+      "getDailyLeaderboard",
     );
+    const getRankMock = vi.fn();
+    const getFriendsUidsMock = vi.spyOn(ConnectionsDal, "getFriendsUids");
 
     beforeEach(async () => {
-      getDailyLeaderboardMock.mockReset();
+      [getDailyLeaderboardMock, getRankMock, getFriendsUidsMock].forEach((it) =>
+        it.mockClear(),
+      );
+
+      getDailyLeaderboardMock.mockReturnValue({
+        getRank: getRankMock,
+      } as any);
+
       vi.useFakeTimers();
       vi.setSystemTime(1722606812000);
       await dailyLeaderboardEnabled(true);
-
-      getDailyLeaderboardMock.mockReturnValue({
-        getRank: () => Promise.resolve({} as any),
-      } as any);
     });
 
     afterEach(() => {
@@ -697,16 +884,12 @@ describe("Loaderboard Controller", () => {
         },
       };
 
-      const getRankMock = vi.fn();
       getRankMock.mockResolvedValue(rankData);
-      getDailyLeaderboardMock.mockReturnValue({
-        getRank: getRankMock,
-      } as any);
 
       //WHEN
       const { body } = await mockApp
         .get("/leaderboards/daily/rank")
-        .set("authorization", `Uid ${uid}`)
+        .set("Authorization", `Bearer ${uid}`)
         .query({ language: "english", mode: "time", mode2: "60" })
         .expect(200);
 
@@ -721,46 +904,84 @@ describe("Loaderboard Controller", () => {
         "time",
         "60",
         lbConf,
-        -1
+        -1,
       );
 
-      expect(getRankMock).toHaveBeenCalledWith(uid, lbConf);
+      expect(getRankMock).toHaveBeenCalledWith(uid, lbConf, undefined);
     });
+
+    it("should get for english time 60 friends only", async () => {
+      //GIVEN
+      await enableConnectionsFeature(true);
+      const lbConf = (await configuration).dailyLeaderboards;
+      getRankMock.mockResolvedValue({});
+      const friends = ["friendOne", "friendTwo"];
+      getFriendsUidsMock.mockResolvedValue(friends);
+
+      //WHEN
+      await mockApp
+        .get("/leaderboards/daily/rank")
+        .set("Authorization", `Bearer ${uid}`)
+        .query({
+          language: "english",
+          mode: "time",
+          mode2: "60",
+          friendsOnly: true,
+        })
+        .expect(200);
+
+      //THEN
+
+      expect(getDailyLeaderboardMock).toHaveBeenCalledWith(
+        "english",
+        "time",
+        "60",
+        lbConf,
+        -1,
+      );
+
+      expect(getRankMock).toHaveBeenCalledWith(uid, lbConf, friends);
+      expect(getFriendsUidsMock).toHaveBeenCalledWith(uid);
+    });
+
     it("fails if daily leaderboards are disabled", async () => {
       await dailyLeaderboardEnabled(false);
 
       const { body } = await mockApp
         .get("/leaderboards/daily/rank")
-        .set("authorization", `Uid ${uid}`)
+        .set("Authorization", `Bearer ${uid}`)
         .expect(503);
 
       expect(body.message).toEqual(
-        "Daily leaderboards are not available at this time."
+        "Daily leaderboards are not available at this time.",
       );
     });
+
     it("should get for mode", async () => {
       for (const mode of ["time", "words", "quote", "zen", "custom"]) {
         const response = await mockApp
           .get("/leaderboards/daily/rank")
-          .set("authorization", `Uid ${uid}`)
+          .set("Authorization", `Bearer ${uid}`)
           .query({ language: "english", mode, mode2: "custom" });
-        expect(response.status, "for mode " + mode).toEqual(200);
+        expect(response.status, `for mode ${mode}`).toEqual(200);
       }
     });
+
     it("should get for mode2", async () => {
       for (const mode2 of allModes) {
         const response = await mockApp
           .get("/leaderboards/daily/rank")
-          .set("authorization", `Uid ${uid}`)
+          .set("Authorization", `Bearer ${uid}`)
           .query({ language: "english", mode: "words", mode2 });
 
-        expect(response.status, "for mode2 " + mode2).toEqual(200);
+        expect(response.status, `for mode2 ${mode2}`).toEqual(200);
       }
     });
+
     it("fails for missing query", async () => {
       const { body } = await mockApp
         .get("/leaderboards/daily/rank")
-        .set("authorization", `Uid ${uid}`)
+        .set("Authorization", `Bearer ${uid}`)
         .expect(422);
 
       expect(body).toEqual({
@@ -772,6 +993,7 @@ describe("Loaderboard Controller", () => {
         ],
       });
     });
+
     it("fails for invalid query", async () => {
       const { body } = await mockApp
         .get("/leaderboards/daily/rank")
@@ -780,18 +1002,19 @@ describe("Loaderboard Controller", () => {
           mode: "unknownMode",
           mode2: "unknownMode2",
         })
-        .set("authorization", `Uid ${uid}`)
+        .set("Authorization", `Bearer ${uid}`)
         .expect(422);
 
       expect(body).toEqual({
         message: "Invalid query schema",
         validationErrors: [
-          '"language" Can only contain letters [a-zA-Z0-9_+]',
+          '"language" Invalid enum value. Must be a supported language',
           `"mode" Invalid enum value. Expected 'time' | 'words' | 'quote' | 'custom' | 'zen', received 'unknownMode'`,
           '"mode2" Needs to be a number or a number represented as a string e.g. "10".',
         ],
       });
     });
+
     it("fails for unknown query", async () => {
       const { body } = await mockApp
         .get("/leaderboards/daily/rank")
@@ -801,7 +1024,7 @@ describe("Loaderboard Controller", () => {
           mode2: "60",
           extra: "value",
         })
-        .set("authorization", `Uid ${uid}`)
+        .set("Authorization", `Bearer ${uid}`)
         .expect(422);
 
       expect(body).toEqual({
@@ -809,6 +1032,7 @@ describe("Loaderboard Controller", () => {
         validationErrors: ["Unrecognized key(s) in object: 'extra'"],
       });
     });
+
     it("fails while leaderboard is missing", async () => {
       //GIVEN
       getDailyLeaderboardMock.mockReturnValue(null);
@@ -816,7 +1040,7 @@ describe("Loaderboard Controller", () => {
       //WHEN
       const { body } = await mockApp
         .get("/leaderboards/daily/rank")
-        .set("authorization", `Uid ${uid}`)
+        .set("Authorization", `Bearer ${uid}`)
         .query({
           language: "english",
           mode: "time",
@@ -825,23 +1049,29 @@ describe("Loaderboard Controller", () => {
         .expect(404);
 
       expect(body.message).toEqual(
-        "There is no daily leaderboard for this mode"
+        "There is no daily leaderboard for this mode",
       );
     });
   });
 
   describe("get xp weekly leaderboard", () => {
     const getXpWeeklyLeaderboardMock = vi.spyOn(WeeklyXpLeaderboard, "get");
+    const getResultMock = vi.fn();
+    const getFriendsUidsMock = vi.spyOn(ConnectionsDal, "getFriendsUids");
 
     beforeEach(async () => {
-      getXpWeeklyLeaderboardMock.mockReset();
+      [getXpWeeklyLeaderboardMock, getResultMock, getFriendsUidsMock].forEach(
+        (it) => it.mockClear(),
+      );
       vi.useFakeTimers();
       vi.setSystemTime(1722606812000);
       await weeklyLeaderboardEnabled(true);
 
       getXpWeeklyLeaderboardMock.mockReturnValue({
-        getResults: () => Promise.resolve([]),
+        getResults: getResultMock,
       } as any);
+
+      getResultMock.mockResolvedValue(null);
     });
 
     afterEach(() => {
@@ -875,11 +1105,7 @@ describe("Loaderboard Controller", () => {
         },
       ];
 
-      const getResultMock = vi.fn();
-      getResultMock.mockResolvedValue(resultData);
-      getXpWeeklyLeaderboardMock.mockReturnValue({
-        getResults: getResultMock,
-      } as any);
+      getResultMock.mockResolvedValue({ count: 2, entries: resultData });
 
       //WHEN
       const { body } = await mockApp
@@ -890,12 +1116,22 @@ describe("Loaderboard Controller", () => {
       //THEN
       expect(body).toEqual({
         message: "Weekly xp leaderboard retrieved",
-        data: resultData,
+        data: {
+          entries: resultData,
+          count: 2,
+          pageSize: 50,
+        },
       });
 
       expect(getXpWeeklyLeaderboardMock).toHaveBeenCalledWith(lbConf, -1);
 
-      expect(getResultMock).toHaveBeenCalledWith(0, 49, lbConf);
+      expect(getResultMock).toHaveBeenCalledWith(
+        0,
+        50,
+        lbConf,
+        false,
+        undefined,
+      );
     });
 
     it("should get for last week", async () => {
@@ -913,48 +1149,88 @@ describe("Loaderboard Controller", () => {
       //THEN
       expect(body).toEqual({
         message: "Weekly xp leaderboard retrieved",
-        data: [],
+        data: {
+          count: 0,
+          entries: [],
+          pageSize: 50,
+        },
       });
 
       expect(getXpWeeklyLeaderboardMock).toHaveBeenCalledWith(
         lbConf,
-        1721606400000
+        1721606400000,
       );
     });
 
     it("should get with skip and limit", async () => {
       //GIVEN
       const lbConf = (await configuration).leaderboards.weeklyXp;
-      const limit = 23;
-      const skip = 42;
-
-      const getResultMock = vi.fn();
-      getResultMock.mockResolvedValue([]);
-      getXpWeeklyLeaderboardMock.mockReturnValue({
-        getResults: getResultMock,
-      } as any);
+      const page = 2;
+      const pageSize = 25;
 
       //WHEN
       const { body } = await mockApp
         .get("/leaderboards/xp/weekly")
         .query({
-          skip,
-          limit,
+          page,
+          pageSize,
         })
         .expect(200);
 
       //THEN
       expect(body).toEqual({
         message: "Weekly xp leaderboard retrieved",
-        data: [],
+        data: {
+          entries: [],
+          count: 0,
+          pageSize,
+        },
       });
 
       expect(getXpWeeklyLeaderboardMock).toHaveBeenCalledWith(lbConf, -1);
 
       expect(getResultMock).toHaveBeenCalledWith(
-        skip,
-        skip + limit - 1,
-        lbConf
+        page,
+        pageSize,
+        lbConf,
+        false,
+        undefined,
+      );
+    });
+
+    it("should get for friends", async () => {
+      //GIVEN
+      const lbConf = (await configuration).leaderboards.weeklyXp;
+      await enableConnectionsFeature(true);
+      const page = 2;
+      const pageSize = 25;
+      const friends = [
+        new ObjectId().toHexString(),
+        new ObjectId().toHexString(),
+      ];
+      getFriendsUidsMock.mockResolvedValue(friends);
+
+      //WHEN
+      await mockApp
+        .get("/leaderboards/xp/weekly")
+        .set("Authorization", `Bearer ${uid}`)
+        .query({
+          page,
+          pageSize,
+          friendsOnly: true,
+        })
+        .expect(200);
+
+      //THEN
+
+      expect(getXpWeeklyLeaderboardMock).toHaveBeenCalledWith(lbConf, -1);
+
+      expect(getResultMock).toHaveBeenCalledWith(
+        page,
+        pageSize,
+        lbConf,
+        false,
+        friends,
       );
     });
 
@@ -964,7 +1240,7 @@ describe("Loaderboard Controller", () => {
       const { body } = await mockApp.get("/leaderboards/xp/weekly").expect(503);
 
       expect(body.message).toEqual(
-        "Weekly XP leaderboards are not available at this time."
+        "Weekly XP leaderboards are not available at this time.",
       );
     });
 
@@ -981,6 +1257,7 @@ describe("Loaderboard Controller", () => {
         validationErrors: ['"weeksBefore" Invalid literal value, expected 1'],
       });
     });
+
     it("fails for unknown query", async () => {
       const { body } = await mockApp
         .get("/leaderboards/xp/weekly")
@@ -994,6 +1271,7 @@ describe("Loaderboard Controller", () => {
         validationErrors: ["Unrecognized key(s) in object: 'extra'"],
       });
     });
+
     it("fails while leaderboard is missing", async () => {
       //GIVEN
       getXpWeeklyLeaderboardMock.mockReturnValue(null);
@@ -1007,10 +1285,21 @@ describe("Loaderboard Controller", () => {
 
   describe("get xp weekly leaderboard rank", () => {
     const getXpWeeklyLeaderboardMock = vi.spyOn(WeeklyXpLeaderboard, "get");
+    const getRankMock = vi.fn();
+    const getFriendsUidsMock = vi.spyOn(ConnectionsDal, "getFriendsUids");
 
     beforeEach(async () => {
-      getXpWeeklyLeaderboardMock.mockReset();
+      [getXpWeeklyLeaderboardMock, getRankMock, getFriendsUidsMock].forEach(
+        (it) => it.mockClear(),
+      );
+
       await weeklyLeaderboardEnabled(true);
+      vi.useFakeTimers();
+      vi.setSystemTime(1722606812000);
+
+      getXpWeeklyLeaderboardMock.mockReturnValue({
+        getRank: getRankMock,
+      } as any);
     });
 
     it("fails withouth authentication", async () => {
@@ -1021,10 +1310,9 @@ describe("Loaderboard Controller", () => {
       //GIVEN
       const lbConf = (await configuration).leaderboards.weeklyXp;
 
-      const resultData: XpLeaderboardRank = {
+      const resultData: XpLeaderboardEntry = {
         totalXp: 100,
         rank: 1,
-        count: 100,
         timeTypedSeconds: 100,
         uid: "user1",
         name: "user1",
@@ -1032,16 +1320,13 @@ describe("Loaderboard Controller", () => {
         discordAvatar: "discordAvatar",
         lastActivityTimestamp: 1000,
       };
-      const getRankMock = vi.fn();
+
       getRankMock.mockResolvedValue(resultData);
-      getXpWeeklyLeaderboardMock.mockReturnValue({
-        getRank: getRankMock,
-      } as any);
 
       //WHEN
       const { body } = await mockApp
         .get("/leaderboards/xp/weekly/rank")
-        .set("authorization", `Uid ${uid}`)
+        .set("Authorization", `Bearer ${uid}`)
         .expect(200);
 
       //THEN
@@ -1052,19 +1337,102 @@ describe("Loaderboard Controller", () => {
 
       expect(getXpWeeklyLeaderboardMock).toHaveBeenCalledWith(lbConf, -1);
 
-      expect(getRankMock).toHaveBeenCalledWith(uid, lbConf);
+      expect(getRankMock).toHaveBeenCalledWith(uid, lbConf, undefined);
     });
+
+    it("should get for last week", async () => {
+      //GIVEN
+      const lbConf = (await configuration).leaderboards.weeklyXp;
+      getRankMock.mockResolvedValue({});
+
+      //WHEN
+      const { body } = await mockApp
+        .get("/leaderboards/xp/weekly/rank")
+        .query({ weeksBefore: 1 })
+        .set("Authorization", `Bearer ${uid}`)
+        .expect(200);
+
+      //THEN
+      expect(body).toEqual({
+        message: "Weekly xp leaderboard rank retrieved",
+        data: {},
+      });
+
+      expect(getXpWeeklyLeaderboardMock).toHaveBeenCalledWith(
+        lbConf,
+        1721606400000,
+      );
+
+      expect(getRankMock).toHaveBeenCalledWith(uid, lbConf, undefined);
+    });
+
+    it("should get for friendsOnly", async () => {
+      //GIVEN
+      const lbConf = (await configuration).leaderboards.weeklyXp;
+      await enableConnectionsFeature(true);
+      getRankMock.mockResolvedValue({});
+      const friends = ["friendOne", "friendTwo"];
+      getFriendsUidsMock.mockResolvedValue(friends);
+
+      //WHEN
+      const { body } = await mockApp
+        .get("/leaderboards/xp/weekly/rank")
+        .query({ friendsOnly: true })
+        .set("Authorization", `Bearer ${uid}`)
+        .expect(200);
+
+      //THEN
+      expect(body).toEqual({
+        message: "Weekly xp leaderboard rank retrieved",
+        data: {},
+      });
+
+      expect(getXpWeeklyLeaderboardMock).toHaveBeenCalledWith(lbConf, -1);
+
+      expect(getRankMock).toHaveBeenCalledWith(uid, lbConf, friends);
+    });
+
     it("fails if daily leaderboards are disabled", async () => {
       await weeklyLeaderboardEnabled(false);
 
       const { body } = await mockApp
         .get("/leaderboards/xp/weekly/rank")
-        .set("authorization", `Uid ${uid}`)
+        .set("Authorization", `Bearer ${uid}`)
         .expect(503);
 
       expect(body.message).toEqual(
-        "Weekly XP leaderboards are not available at this time."
+        "Weekly XP leaderboards are not available at this time.",
       );
+    });
+
+    it("fails for weeksBefore not one", async () => {
+      const { body } = await mockApp
+        .get("/leaderboards/xp/weekly/rank")
+        .set("Authorization", `Bearer ${uid}`)
+        .query({
+          weeksBefore: 2,
+        })
+        .expect(422);
+
+      expect(body).toEqual({
+        message: "Invalid query schema",
+        validationErrors: ['"weeksBefore" Invalid literal value, expected 1'],
+      });
+    });
+
+    it("fails for unknown query", async () => {
+      const { body } = await mockApp
+        .get("/leaderboards/xp/weekly/rank")
+        .set("Authorization", `Bearer ${uid}`)
+        .query({
+          extra: "value",
+        })
+        .expect(422);
+
+      expect(body).toEqual({
+        message: "Invalid query schema",
+        validationErrors: ["Unrecognized key(s) in object: 'extra'"],
+      });
     });
 
     it("fails while leaderboard is missing", async () => {
@@ -1074,12 +1442,7 @@ describe("Loaderboard Controller", () => {
       //WHEN
       const { body } = await mockApp
         .get("/leaderboards/xp/weekly/rank")
-        .set("authorization", `Uid ${uid}`)
-        .query({
-          language: "english",
-          mode: "time",
-          mode2: "60",
-        })
+        .set("Authorization", `Bearer ${uid}`)
         .expect(404);
 
       expect(body.message).toEqual("XP leaderboard for this week not found.");
@@ -1088,30 +1451,41 @@ describe("Loaderboard Controller", () => {
 });
 
 async function acceptApeKeys(enabled: boolean): Promise<void> {
-  const mockConfig = _.merge(await configuration, {
-    apeKeys: { acceptKeys: enabled },
-  });
+  const mockConfig = await configuration;
+  mockConfig.apeKeys = { ...mockConfig.apeKeys, acceptKeys: enabled };
 
   vi.spyOn(Configuration, "getCachedConfiguration").mockResolvedValue(
-    mockConfig
+    mockConfig,
   );
 }
 
 async function dailyLeaderboardEnabled(enabled: boolean): Promise<void> {
-  const mockConfig = _.merge(await configuration, {
-    dailyLeaderboards: { enabled: enabled },
-  });
+  const mockConfig = await configuration;
+  mockConfig.dailyLeaderboards = {
+    ...mockConfig.dailyLeaderboards,
+    enabled: enabled,
+  };
 
   vi.spyOn(Configuration, "getCachedConfiguration").mockResolvedValue(
-    mockConfig
+    mockConfig,
   );
 }
 async function weeklyLeaderboardEnabled(enabled: boolean): Promise<void> {
-  const mockConfig = _.merge(await configuration, {
-    leaderboards: { weeklyXp: { enabled } },
-  });
+  const mockConfig = await configuration;
+  mockConfig.leaderboards.weeklyXp = {
+    ...mockConfig.leaderboards.weeklyXp,
+    enabled,
+  };
 
   vi.spyOn(Configuration, "getCachedConfiguration").mockResolvedValue(
-    mockConfig
+    mockConfig,
+  );
+}
+async function enableConnectionsFeature(enabled: boolean): Promise<void> {
+  const mockConfig = await configuration;
+  mockConfig.connections = { ...mockConfig.connections, enabled };
+
+  vi.spyOn(Configuration, "getCachedConfiguration").mockResolvedValue(
+    mockConfig,
   );
 }

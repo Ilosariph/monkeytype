@@ -1,7 +1,12 @@
-import { ConfigValue } from "@monkeytype/contracts/schemas/configs";
-import { Accents } from "../test/lazy-mode";
-import { hexToHSL } from "./colors";
-import { FunboxWordsFrequency, Wordset } from "../test/wordset";
+import { Language, LanguageObject } from "@monkeytype/schemas/languages";
+import { LayoutObject } from "@monkeytype/schemas/layouts";
+import { languageHashes } from "virtual:language-hashes";
+import { isDevEnvironment } from "./env";
+import { toHex } from "./strings";
+
+//pin implementation
+const fetch = window.fetch;
+const cryptoSubtle = window.crypto.subtle;
 
 /**
  * Fetches JSON data from the specified URL using the fetch API.
@@ -14,46 +19,46 @@ async function fetchJson<T>(url: string): Promise<T> {
     if (!url) throw new Error("No URL");
     const res = await fetch(url);
     if (res.ok) {
+      if (!res.headers.get("content-type")?.startsWith("application/json")) {
+        throw new Error("Content is not JSON");
+      }
       return (await res.json()) as T;
     } else {
       throw new Error(`${res.status} ${res.statusText}`);
     }
   } catch (e) {
-    console.error("Error fetching JSON: " + url, e);
+    console.error(`Error fetching JSON: ${url}`, e);
     throw e;
   }
 }
 
 /**
  * Memoizes an asynchronous function.
- * @template P The type of the function's parameters.
- * @template T The type of the function.
- * @param {T} fn The asynchronous function to memoize.
- * @param {(...args: Parameters<T>) => P} [getKey] Optional function to generate cache keys based on function arguments.
- * @returns {T} The memoized function.
+ * @template P   Cache key type
+ * @template Args Function argument tuple
+ * @template R   Resolved value of the Promise
+ * @param fn The async function to memoize.
+ * @param getKey Optional function to compute a cache key from the function arguments. If omitted, the first argument is used as the key.
+ * @returns A memoized version of the async function with the same signature.
  */
-export function memoizeAsync<P, T extends <B>(...args: P[]) => Promise<B>>(
-  fn: T,
-  getKey?: (...args: Parameters<T>) => P
-): T {
-  const cache = new Map<P, Promise<ReturnType<T>>>();
+export function memoizeAsync<P, Args extends unknown[], R>(
+  fn: (...args: Args) => Promise<R>,
+  getKey?: (...args: Args) => P,
+): (...args: Args) => Promise<R> {
+  const cache = new Map<P, Promise<R>>();
 
-  return (async (...args: Parameters<T>): Promise<ReturnType<T>> => {
-    const key = getKey ? getKey.apply(args) : (args[0] as P);
+  return async (...args: Args): Promise<R> => {
+    const key = getKey ? getKey(...args) : (args[0] as P);
 
-    if (cache.has(key)) {
-      const ret = await cache.get(key);
-      if (ret !== undefined) {
-        return ret as ReturnType<T>;
-      }
+    const cached = cache.get(key);
+    if (cached !== undefined) {
+      return cached;
     }
 
-    // eslint-disable-next-line prefer-spread
-    const result = fn.apply(null, args) as Promise<ReturnType<T>>;
+    const result = fn(...args);
     cache.set(key, result);
-
     return result;
-  }) as T;
+  };
 }
 
 /**
@@ -61,41 +66,7 @@ export function memoizeAsync<P, T extends <B>(...args: P[]) => Promise<B>>(
  * @param url - The URL used to fetch JSON data.
  * @returns A promise that resolves to the cached JSON data.
  */
-export const cachedFetchJson = memoizeAsync<string, typeof fetchJson>(
-  fetchJson
-);
-
-export type Keys = {
-  row1: string[];
-  row2: string[];
-  row3: string[];
-  row4: string[];
-  row5: string[];
-};
-
-export type Layout = {
-  keymapShowTopRow: boolean;
-  matrixShowRightColumn?: boolean;
-  type: "iso" | "ansi" | "ortho" | "matrix";
-  keys: Keys;
-};
-
-export type LayoutsList = Record<string, Layout>;
-
-/**
- * Fetches the layouts list from the server.
- * @returns A promise that resolves to the layouts list.
- */
-export async function getLayoutsList(): Promise<LayoutsList> {
-  try {
-    const layoutsList = await cachedFetchJson<LayoutsList>(
-      "/layouts/_list.json"
-    );
-    return layoutsList;
-  } catch (e) {
-    throw new Error("Layouts JSON fetch failed");
-  }
-}
+export const cachedFetchJson = memoizeAsync(fetchJson);
 
 /**
  * Fetches a layout by name from the server.
@@ -103,141 +74,54 @@ export async function getLayoutsList(): Promise<LayoutsList> {
  * @returns A promise that resolves to the layout object.
  * @throws {Error} If the layout list or layout doesn't exist.
  */
-export async function getLayout(layoutName: string): Promise<Layout> {
-  const layouts = await getLayoutsList();
-  const layout = layouts[layoutName];
-  if (layout === undefined) {
-    throw new Error(`Layout ${layoutName} is undefined`);
-  }
-  return layout;
+export async function getLayout(layoutName: string): Promise<LayoutObject> {
+  return await cachedFetchJson<LayoutObject>(`/layouts/${layoutName}.json`);
 }
 
-export type Theme = {
-  name: string;
-  bgColor: string;
-  mainColor: string;
-  subColor: string;
-  textColor: string;
-};
-
-let themesList: Theme[] | undefined;
-
-/**
- * Fetches the list of themes from the server, sorting them alphabetically by name.
- * If the list has already been fetched, returns the cached list.
- * @returns A promise that resolves to the sorted list of themes.
- */
-export async function getThemesList(): Promise<Theme[]> {
-  if (!themesList) {
-    let themes = await cachedFetchJson<Theme[]>("/themes/_list.json");
-
-    themes = themes.sort((a, b) => {
-      const nameA = a.name.toLowerCase();
-      const nameB = b.name.toLowerCase();
-      if (nameA < nameB) return -1;
-      if (nameA > nameB) return 1;
-      return 0;
-    });
-    themesList = themes;
-    return themesList;
-  } else {
-    return themesList;
-  }
-}
-
-let sortedThemesList: Theme[] | undefined;
-
-/**
- * Fetches the sorted list of themes from the server.
- * @returns A promise that resolves to the sorted list of themes.
- */
-export async function getSortedThemesList(): Promise<Theme[]> {
-  if (!sortedThemesList) {
-    if (!themesList) {
-      await getThemesList();
-    }
-    if (!themesList) {
-      throw new Error("Themes list is undefined");
-    }
-    let sorted = [...themesList];
-    sorted = sorted.sort((a, b) => {
-      const b1 = hexToHSL(a.bgColor);
-      const b2 = hexToHSL(b.bgColor);
-      return b2.lgt - b1.lgt;
-    });
-    sortedThemesList = sorted;
-    return sortedThemesList;
-  } else {
-    return sortedThemesList;
-  }
-}
-
-/**
- * Fetches the list of languages from the server.
- * @returns A promise that resolves to the list of languages.
- */
-export async function getLanguageList(): Promise<string[]> {
-  try {
-    const languageList = await cachedFetchJson<string[]>(
-      "/languages/_list.json"
-    );
-    return languageList;
-  } catch (e) {
-    throw new Error("Language list JSON fetch failed");
-  }
-}
-
-export type LanguageGroup = {
-  name: string;
-  languages: string[];
-};
-
-/**
- * Fetches the list of language groups from the server.
- * @returns A promise that resolves to the list of language groups.
- */
-export async function getLanguageGroups(): Promise<LanguageGroup[]> {
-  try {
-    const languageGroupList = await cachedFetchJson<LanguageGroup[]>(
-      "/languages/_groups.json"
-    );
-    return languageGroupList;
-  } catch (e) {
-    throw new Error("Language groups JSON fetch failed");
-  }
-}
-
-export type LanguageObject = {
-  name: string;
-  rightToLeft: boolean;
-  noLazyMode?: boolean;
-  ligatures?: boolean;
-  orderedByFrequency?: boolean;
-  words: string[];
-  additionalAccents: Accents;
-  bcp47?: string;
-  originalPunctuation?: boolean;
-};
+// used for polyglot wordset language-specific properties
+export type LanguageProperties = Pick<
+  LanguageObject,
+  "noLazyMode" | "joiningScript" | "rightToLeft" | "additionalAccents"
+>;
 
 let currentLanguage: LanguageObject;
 
+const cachedFetchLanguage = memoizeAsync(
+  async (lang: Language): Promise<LanguageObject> => {
+    const loaded = await fetchJson<LanguageObject>(`/languages/${lang}.json`);
+
+    if (!isDevEnvironment()) {
+      //check the content to make it less easy to manipulate
+      const encoder = new TextEncoder();
+      const data = encoder.encode(JSON.stringify(loaded, null, 0));
+      const hashBuffer = await cryptoSubtle.digest("SHA-256", data);
+      const hash = toHex(hashBuffer);
+      if (hash !== languageHashes[lang]) {
+        throw new Error(
+          "Integrity check failed. Try refreshing the page. If this error persists, please contact support.",
+        );
+      }
+    }
+    return loaded;
+  },
+);
 /**
  * Fetches the language object for a given language from the server.
  * @param lang The language code.
  * @returns A promise that resolves to the language object.
  */
-export async function getLanguage(lang: string): Promise<LanguageObject> {
+export async function getLanguage(lang: Language): Promise<LanguageObject> {
   // try {
   if (currentLanguage === undefined || currentLanguage.name !== lang) {
-    currentLanguage = await cachedFetchJson<LanguageObject>(
-      `/languages/${lang}.json`
-    );
+    const loaded = await cachedFetchLanguage(lang);
+
+    currentLanguage = loaded;
   }
   return currentLanguage;
 }
 
 export async function checkIfLanguageSupportsZipf(
-  language: string
+  language: Language,
 ): Promise<"yes" | "no" | "unknown"> {
   const lang = await getLanguage(language);
   if (lang.orderedByFrequency === true) return "yes";
@@ -251,52 +135,9 @@ export async function checkIfLanguageSupportsZipf(
  * @returns A promise that resolves to the current language object.
  */
 export async function getCurrentLanguage(
-  languageName: string
+  languageName: Language,
 ): Promise<LanguageObject> {
   return await getLanguage(languageName);
-}
-
-/**
- * Fetches the language group for a given language.
- * @param language The language code.
- * @returns A promise that resolves to the language group.
- */
-export async function getCurrentGroup(
-  language: string
-): Promise<LanguageGroup | undefined> {
-  let retgroup: LanguageGroup | undefined;
-  const groups = await getLanguageGroups();
-  groups.forEach((group) => {
-    if (retgroup === undefined) {
-      if (group.languages.includes(language)) {
-        retgroup = group;
-      }
-    }
-  });
-  return retgroup;
-}
-
-let funboxList: FunboxMetadata[] | undefined;
-
-/**
- * Fetches the list of funbox metadata from the server.
- * @returns A promise that resolves to the list of funbox metadata.
- */
-export async function getFunboxList(): Promise<FunboxMetadata[]> {
-  if (!funboxList) {
-    let list = await cachedFetchJson<FunboxMetadata[]>("/funbox/_list.json");
-    list = list.sort((a, b) => {
-      const nameA = a.name.toLowerCase();
-      const nameB = b.name.toLowerCase();
-      if (nameA < nameB) return -1;
-      if (nameA > nameB) return 1;
-      return 0;
-    });
-    funboxList = list;
-    return funboxList;
-  } else {
-    return funboxList;
-  }
 }
 
 export class Section {
@@ -310,144 +151,15 @@ export class Section {
   }
 }
 
-export type FunboxMetadata = {
-  name: string;
-  info: string;
-  canGetPb?: boolean;
-  alias?: string;
-  forcedConfig?: FunboxForcedConfig;
-  properties?: FunboxProperty[];
-  functions?: FunboxFunctions;
-  hasCSS?: boolean;
-};
-
 export type FunboxWordOrder = "normal" | "reverse";
-
-type FunboxProperty =
-  | "symmetricChars"
-  | "conflictsWithSymmetricChars"
-  | "changesWordsVisibility"
-  | "speaks"
-  | "unspeakable"
-  | "changesLayout"
-  | "ignoresLayout"
-  | "usesLayout"
-  | "ignoresLanguage"
-  | "noLigatures"
-  | "noLetters"
-  | "changesCapitalisation"
-  | "nospace"
-  | `toPush:${number}`
-  | "noInfiniteDuration"
-  | "changesWordsFrequency"
-  | `wordOrder:${FunboxWordOrder}`;
-
-export type FunboxForcedConfig = Record<string, ConfigValue[]>;
-
-export type FunboxFunctions = {
-  getWord?: (wordset?: Wordset, wordIndex?: number) => string;
-  punctuateWord?: (word: string) => string;
-  withWords?: (words?: string[]) => Promise<Wordset>;
-  alterText?: (word: string) => string;
-  applyConfig?: () => void;
-  applyGlobalCSS?: () => void;
-  clearGlobal?: () => void;
-  rememberSettings?: () => void;
-  toggleScript?: (params: string[]) => void;
-  pullSection?: (language?: string) => Promise<Section | false>;
-  handleSpace?: () => void;
-  handleChar?: (char: string) => string;
-  isCharCorrect?: (char: string, originalChar: string) => boolean;
-  preventDefaultEvent?: (
-    event: JQuery.KeyDownEvent<Document, null, Document, Document>
-  ) => Promise<boolean>;
-  handleKeydown?: (
-    event: JQuery.KeyDownEvent<Document, undefined, Document, Document>
-  ) => Promise<void>;
-  getResultContent?: () => string;
-  start?: () => void;
-  restart?: () => void;
-  getWordHtml?: (char: string, letterTag?: boolean) => string;
-  getWordsFrequencyMode?: () => FunboxWordsFrequency;
-};
-
-/**
- * Fetches the funbox metadata for a given funbox from the server.
- * @param funbox The name of the funbox.
- * @returns A promise that resolves to the funbox metadata.
- */
-export async function getFunbox(
-  funbox: string
-): Promise<FunboxMetadata | undefined> {
-  const list: FunboxMetadata[] = await getFunboxList();
-  return list.find(function (element) {
-    return element.name === funbox;
-  });
-}
-
-export type FontObject = {
-  name: string;
-  display?: string;
-  systemFont?: string;
-};
-
-let fontsList: FontObject[] | undefined;
-
-/**
- * Fetches the list of font objects from the server.
- * @returns A promise that resolves to the list of font objects.
- */
-export async function getFontsList(): Promise<FontObject[]> {
-  if (!fontsList) {
-    let list = await cachedFetchJson<FontObject[]>("/fonts/_list.json");
-    list = list.sort((a, b) => {
-      const nameA = a.name.toLowerCase();
-      const nameB = b.name.toLowerCase();
-      if (nameA < nameB) return -1;
-      if (nameA > nameB) return 1;
-      return 0;
-    });
-    fontsList = list;
-    return fontsList;
-  } else {
-    return fontsList;
-  }
-}
-
-export type Challenge = {
-  name: string;
-  display: string;
-  autoRole: boolean;
-  type: string;
-  parameters: (string | number | boolean)[];
-  message: string;
-  requirements: Record<string, Record<string, string | number | boolean>>;
-};
-
-/**
- * Fetches the list of challenges from the server.
- * @returns A promise that resolves to the list of challenges.
- */
-export async function getChallengeList(): Promise<Challenge[]> {
-  try {
-    const data = await cachedFetchJson<Challenge[]>("/challenges/_list.json");
-    return data;
-  } catch (e) {
-    throw new Error("Challenge list JSON fetch failed");
-  }
-}
 
 /**
  * Fetches the list of supporters from the server.
  * @returns A promise that resolves to the list of supporters.
  */
 export async function getSupportersList(): Promise<string[]> {
-  try {
-    const data = await cachedFetchJson<string[]>("/about/supporters.json");
-    return data;
-  } catch (e) {
-    throw new Error("Supporters list JSON fetch failed");
-  }
+  const data = await fetchJson<string[]>("/supporters.json");
+  return data;
 }
 
 /**
@@ -455,12 +167,8 @@ export async function getSupportersList(): Promise<string[]> {
  * @returns A promise that resolves to the list of contributors.
  */
 export async function getContributorsList(): Promise<string[]> {
-  try {
-    const data = await cachedFetchJson<string[]>("/about/contributors.json");
-    return data;
-  } catch (e) {
-    throw new Error("Contributors list JSON fetch failed");
-  }
+  const data = await fetchJson<string[]>("/contributors.json");
+  return data;
 }
 
 type GithubRelease = {
@@ -515,9 +223,9 @@ type GithubRelease = {
 export async function getLatestReleaseFromGitHub(): Promise<string> {
   type releaseType = { name: string };
   const releases = await cachedFetchJson<releaseType[]>(
-    "https://api.github.com/repos/monkeytypegame/monkeytype/releases?per_page=1"
+    "https://api.github.com/repos/monkeytypegame/monkeytype/releases?per_page=1",
   );
-  if (releases[0] === undefined || releases[0].name === undefined) {
+  if (releases[0]?.name === undefined) {
     throw new Error("No release found");
   }
   return releases[0].name;
@@ -527,8 +235,10 @@ export async function getLatestReleaseFromGitHub(): Promise<string> {
  * Fetches the list of releases from GitHub.
  * @returns A promise that resolves to the list of releases.
  */
-export async function getReleasesFromGitHub(): Promise<GithubRelease[]> {
-  return cachedFetchJson(
-    "https://api.github.com/repos/monkeytypegame/monkeytype/releases?per_page=5"
+export async function getReleasesFromGitHub(options?: {
+  page?: number;
+}): Promise<GithubRelease[]> {
+  return fetchJson(
+    `https://api.github.com/repos/monkeytypegame/monkeytype/releases?per_page=5&page=${options?.page ?? 1}`,
   );
 }

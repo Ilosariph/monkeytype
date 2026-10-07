@@ -1,7 +1,20 @@
-import { AppRouter, initClient, type ApiFetcherArgs } from "@ts-rest/core";
-import { getIdToken } from "firebase/auth";
-import { envConfig } from "../../constants/env-config";
-import { getAuthenticatedUser, isAuthenticated } from "../../firebase";
+import {
+  AppRouter,
+  initClient,
+  tsRestFetchApi,
+  type ApiFetcherArgs,
+} from "@ts-rest/core";
+import { envConfig } from "virtual:env-config";
+import { getIdToken } from "../../firebase";
+import {
+  COMPATIBILITY_CHECK,
+  COMPATIBILITY_CHECK_HEADER,
+} from "@monkeytype/contracts";
+import { addBanner } from "../../states/banners";
+
+let bannerShownThisSession = false;
+
+export let lastSeenServerCompatibility: number | undefined;
 
 function timeoutSignal(ms: number): AbortSignal {
   const ctrl = new AbortController();
@@ -16,44 +29,51 @@ function buildApi(timeout: number): (args: ApiFetcherArgs) => Promise<{
 }> {
   return async (request: ApiFetcherArgs) => {
     try {
-      const headers: HeadersInit = {
-        ...request.headers,
-        "X-Client-Version": envConfig.clientVersion,
-      };
-
-      if (isAuthenticated()) {
-        const token = await getIdToken(getAuthenticatedUser());
-        headers["Authorization"] = `Bearer ${token}`;
+      const token = await getIdToken();
+      if (token !== null) {
+        request.headers["Authorization"] = `Bearer ${token}`;
       }
-
-      const fetchOptions: RequestInit = {
-        method: request.method,
-        headers,
-        body: request.body,
-      };
 
       const usePolyfill = AbortSignal?.timeout === undefined;
 
-      const response = await fetch(request.path, {
-        ...fetchOptions,
+      request.fetchOptions = {
+        ...request.fetchOptions,
         signal: usePolyfill
           ? timeoutSignal(timeout)
           : AbortSignal.timeout(timeout),
-      });
-
-      const body = (await response.json()) as object;
+      };
+      const response = await tsRestFetchApi(request);
       if (response.status >= 400) {
         console.error(`${request.method} ${request.path} failed`, {
           status: response.status,
-          ...body,
+          ...(response.body as object),
         });
       }
 
-      return {
-        status: response.status,
-        body,
-        headers: response.headers ?? new Headers(),
-      };
+      const compatibilityCheckHeader = response.headers.get(
+        COMPATIBILITY_CHECK_HEADER,
+      );
+
+      if (compatibilityCheckHeader !== null) {
+        lastSeenServerCompatibility = parseInt(compatibilityCheckHeader);
+      }
+
+      if (compatibilityCheckHeader !== null && !bannerShownThisSession) {
+        const backendCheck = parseInt(compatibilityCheckHeader);
+        if (backendCheck !== COMPATIBILITY_CHECK) {
+          const message =
+            backendCheck > COMPATIBILITY_CHECK
+              ? `Looks like the client and server versions are mismatched (backend is newer). Please refresh the page.`
+              : `Looks like our monkeys didn't deploy the new server version correctly. If this message persists contact support.`;
+          addBanner({
+            level: "error",
+            text: message,
+          });
+          bannerShownThisSession = true;
+        }
+      }
+
+      return response;
     } catch (e: Error | unknown) {
       let message = "Unknown error";
 
@@ -74,11 +94,11 @@ function buildApi(timeout: number): (args: ApiFetcherArgs) => Promise<{
   };
 }
 
-/* eslint-disable @typescript-eslint/explicit-function-return-type */
+// oxlint-disable-next-line explicit-function-return-type
 export function buildClient<T extends AppRouter>(
   contract: T,
   baseUrl: string,
-  timeout: number = 10_000
+  timeout: number = 10_000,
 ) {
   return initClient(contract, {
     baseUrl: baseUrl,
@@ -86,7 +106,7 @@ export function buildClient<T extends AppRouter>(
     api: buildApi(timeout),
     baseHeaders: {
       Accept: "application/json",
+      "X-Client-Version": envConfig.clientVersion,
     },
   });
 }
-/* eslint-enable @typescript-eslint/explicit-function-return-type */

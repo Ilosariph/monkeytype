@@ -1,35 +1,28 @@
-import request from "supertest";
-import app from "../../../src/app";
-import _, { omit } from "lodash";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { setup } from "../../__testData__/controller-test";
 import * as Configuration from "../../../src/init/configuration";
 import * as ResultDal from "../../../src/dal/result";
 import * as UserDal from "../../../src/dal/user";
+import * as PublicDal from "../../../src/dal/public";
 import * as LogsDal from "../../../src/dal/logs";
-import * as AuthUtils from "../../../src/utils/auth";
-import { DecodedIdToken } from "firebase-admin/lib/auth/token-verifier";
 import { ObjectId } from "mongodb";
 import { mockAuthenticateWithApeKey } from "../../__testData__/auth";
 import { enableRateLimitExpects } from "../../__testData__/rate-limit";
 import { DBResult } from "../../../src/utils/result";
-const uid = "123456";
+import { omit } from "../../../src/utils/misc";
+import { CompletedEvent } from "@monkeytype/schemas/results";
 
-const mockDecodedToken: DecodedIdToken = {
-  uid,
-  email: "newuser@mail.com",
-  iat: 0,
-} as DecodedIdToken;
-
-const mockApp = request(app);
-
+const { mockApp, uid } = setup();
 const configuration = Configuration.getCachedConfiguration();
 enableRateLimitExpects();
 
 describe("result controller test", () => {
-  const verifyIdTokenMock = vi.spyOn(AuthUtils, "verifyIdToken");
+  const addLogMock = vi.spyOn(LogsDal, "addLog");
+  const addImportantLogMock = vi.spyOn(LogsDal, "addImportantLog");
 
   beforeEach(() => {
-    verifyIdTokenMock.mockReset();
-    verifyIdTokenMock.mockResolvedValue(mockDecodedToken);
+    addLogMock.mockClear().mockResolvedValue();
+    addImportantLogMock.mockClear().mockResolvedValue();
   });
 
   describe("getResults", () => {
@@ -42,7 +35,7 @@ describe("result controller test", () => {
     });
 
     afterEach(() => {
-      resultMock.mockReset();
+      resultMock.mockClear();
     });
 
     it("should get results", async () => {
@@ -87,7 +80,7 @@ describe("result controller test", () => {
         .expect(200);
 
       //THEN
-      expect(resultMock).toHaveBeenCalledWith(mockDecodedToken.uid, {
+      expect(resultMock).toHaveBeenCalledWith(uid, {
         limit: 1000,
         offset: 0,
         onOrAfterTimestamp: NaN,
@@ -106,7 +99,7 @@ describe("result controller test", () => {
 
       //THEN
 
-      expect(resultMock).toHaveBeenCalledWith(mockDecodedToken.uid, {
+      expect(resultMock).toHaveBeenCalledWith(uid, {
         limit: 1000,
         offset: 0,
         onOrAfterTimestamp: now,
@@ -122,7 +115,7 @@ describe("result controller test", () => {
         .expect(200);
 
       //THEN
-      expect(resultMock).toHaveBeenCalledWith(mockDecodedToken.uid, {
+      expect(resultMock).toHaveBeenCalledWith(uid, {
         limit: 250,
         offset: 500,
         onOrAfterTimestamp: NaN,
@@ -141,7 +134,7 @@ describe("result controller test", () => {
       expect(body.message).toEqual(
         `Max results limit of ${
           (await configuration).results.limits.regularUser
-        } exceeded.`
+        } exceeded.`,
       );
     });
     it("should get with higher max limit for premium user", async () => {
@@ -158,7 +151,7 @@ describe("result controller test", () => {
 
       //THEN
 
-      expect(resultMock).toHaveBeenCalledWith(mockDecodedToken.uid, {
+      expect(resultMock).toHaveBeenCalledWith(uid, {
         limit: 800,
         offset: 600,
         onOrAfterTimestamp: NaN,
@@ -175,7 +168,7 @@ describe("result controller test", () => {
 
       //THEN
 
-      expect(resultMock).toHaveBeenCalledWith(mockDecodedToken.uid, {
+      expect(resultMock).toHaveBeenCalledWith(uid, {
         limit: 10, //limit is reduced to stay within max limit
         offset: 990,
         onOrAfterTimestamp: NaN,
@@ -214,13 +207,13 @@ describe("result controller test", () => {
       expect(body.message).toEqual(
         `Max results limit of ${
           (await configuration).results.limits.premiumUser
-        } exceeded.`
+        } exceeded.`,
       );
     });
     it("should get results within regular limits for premium users even if premium is globally disabled", async () => {
       //GIVEN
       vi.spyOn(UserDal, "checkIfUserIsPremium").mockResolvedValue(true);
-      enablePremiumFeatures(false);
+      await enablePremiumFeatures(false);
 
       //WHEN
       await mockApp
@@ -231,7 +224,7 @@ describe("result controller test", () => {
         .expect(200);
 
       //THEN
-      expect(resultMock).toHaveBeenCalledWith(mockDecodedToken.uid, {
+      expect(resultMock).toHaveBeenCalledWith(uid, {
         limit: 100,
         offset: 900,
         onOrAfterTimestamp: NaN,
@@ -240,7 +233,7 @@ describe("result controller test", () => {
     it("should fail exceeding max limit for premium user if premium is globally disabled", async () => {
       //GIVEN
       vi.spyOn(UserDal, "checkIfUserIsPremium").mockResolvedValue(true);
-      enablePremiumFeatures(false);
+      await enablePremiumFeatures(false);
 
       //WHEN
       const { body } = await mockApp
@@ -256,7 +249,7 @@ describe("result controller test", () => {
     it("should get results with regular limit as default for premium users if premium is globally disabled", async () => {
       //GIVEN
       vi.spyOn(UserDal, "checkIfUserIsPremium").mockResolvedValue(true);
-      enablePremiumFeatures(false);
+      await enablePremiumFeatures(false);
 
       //WHEN
       await mockApp
@@ -266,7 +259,7 @@ describe("result controller test", () => {
         .expect(200);
 
       //THEN
-      expect(resultMock).toHaveBeenCalledWith(mockDecodedToken.uid, {
+      expect(resultMock).toHaveBeenCalledWith(uid, {
         limit: 1000, //the default limit for regular users
         offset: 0,
         onOrAfterTimestamp: NaN,
@@ -287,47 +280,9 @@ describe("result controller test", () => {
         validationErrors: ["Unrecognized key(s) in object: 'extra'"],
       });
     });
-    it("should get results with legacy values", async () => {
-      //GIVEN
-      const resultOne = givenDbResult(uid, {
-        charStats: undefined,
-        incorrectChars: 5,
-        correctChars: 12,
-      });
-      const resultTwo = givenDbResult(uid, {
-        charStats: undefined,
-        incorrectChars: 7,
-        correctChars: 15,
-      });
-      resultMock.mockResolvedValue([resultOne, resultTwo]);
-
-      //WHEN
-      const { body } = await mockApp
-        .get("/results")
-        .set("Authorization", `Bearer ${uid}`)
-        .send()
-        .expect(200);
-
-      //THEN
-
-      expect(body.message).toEqual("Results retrieved");
-      expect(body.data[0]).toMatchObject({
-        _id: resultOne._id.toHexString(),
-        charStats: [12, 5, 0, 0],
-      });
-      expect(body.data[0]).not.toHaveProperty("correctChars");
-      expect(body.data[0]).not.toHaveProperty("incorrectChars");
-
-      expect(body.data[1]).toMatchObject({
-        _id: resultTwo._id.toHexString(),
-        charStats: [15, 7, 0, 0],
-      });
-      expect(body.data[1]).not.toHaveProperty("correctChars");
-      expect(body.data[1]).not.toHaveProperty("incorrectChars");
-    });
     it("should be rate limited", async () => {
       await expect(
-        mockApp.get("/results").set("Authorization", `Bearer ${uid}`)
+        mockApp.get("/results").set("Authorization", `Bearer ${uid}`),
       ).toBeRateLimited({ max: 60, windowMs: 60 * 60 * 1000 });
     });
     it("should be rate limited for ape keys", async () => {
@@ -337,15 +292,71 @@ describe("result controller test", () => {
 
       //WHEN
       await expect(
-        mockApp.get("/results").set("Authorization", `ApeKey ${apeKey}`)
+        mockApp.get("/results").set("Authorization", `ApeKey ${apeKey}`),
       ).toBeRateLimited({ max: 30, windowMs: 24 * 60 * 60 * 1000 });
+    });
+  });
+  describe("getResultById", () => {
+    const getResultMock = vi.spyOn(ResultDal, "getResult");
+
+    afterEach(() => {
+      getResultMock.mockClear();
+    });
+
+    it("should get result", async () => {
+      //GIVEN
+      const result = givenDbResult(uid);
+      getResultMock.mockResolvedValue(result);
+
+      //WHEN
+      const { body } = await mockApp
+        .get(`/results/id/${result._id}`)
+        .set("Authorization", `Bearer ${uid}`)
+        .send()
+        .expect(200);
+
+      //THEN
+      expect(body.message).toEqual("Result retrieved");
+      expect(body.data).toEqual({ ...result, _id: result._id.toHexString() });
+    });
+    it("should get last result with ape key", async () => {
+      //GIVEN
+      await acceptApeKeys(true);
+      const apeKey = await mockAuthenticateWithApeKey(uid, await configuration);
+      const result = givenDbResult(uid);
+      getResultMock.mockResolvedValue(result);
+
+      //WHEN
+      await mockApp
+        .get(`/results/id/${result._id}`)
+        .set("Authorization", `ApeKey ${apeKey}`)
+        .send()
+        .expect(200);
+    });
+    it("should rate limit get  result with ape key", async () => {
+      //GIVEN
+      const result = givenDbResult(uid, {
+        charStats: undefined,
+        incorrectChars: 5,
+        correctChars: 12,
+      });
+      getResultMock.mockResolvedValue(result);
+      await acceptApeKeys(true);
+      const apeKey = await mockAuthenticateWithApeKey(uid, await configuration);
+
+      //WHEN
+      await expect(
+        mockApp
+          .get(`/results/id/${result._id}`)
+          .set("Authorization", `ApeKey ${apeKey}`),
+      ).toBeRateLimited({ max: 60, windowMs: 60 * 60 * 1000 });
     });
   });
   describe("getLastResult", () => {
     const getLastResultMock = vi.spyOn(ResultDal, "getLastResult");
 
     afterEach(() => {
-      getLastResultMock.mockReset();
+      getLastResultMock.mockClear();
     });
 
     it("should get last result", async () => {
@@ -378,31 +389,6 @@ describe("result controller test", () => {
         .send()
         .expect(200);
     });
-    it("should get last result with legacy values", async () => {
-      //GIVEN
-      const result = givenDbResult(uid, {
-        charStats: undefined,
-        incorrectChars: 5,
-        correctChars: 12,
-      });
-      getLastResultMock.mockResolvedValue(result);
-
-      //WHEN
-      const { body } = await mockApp
-        .get("/results/last")
-        .set("Authorization", `Bearer ${uid}`)
-        .send()
-        .expect(200);
-
-      //THEN
-      expect(body.message).toEqual("Result retrieved");
-      expect(body.data).toMatchObject({
-        _id: result._id.toHexString(),
-        charStats: [12, 5, 0, 0],
-      });
-      expect(body.data).not.toHaveProperty("correctChars");
-      expect(body.data).not.toHaveProperty("incorrectChars");
-    });
     it("should rate limit get last result with ape key", async () => {
       //GIVEN
       const result = givenDbResult(uid, {
@@ -416,44 +402,8 @@ describe("result controller test", () => {
 
       //WHEN
       await expect(
-        mockApp.get("/results/last").set("Authorization", `ApeKey ${apeKey}`)
+        mockApp.get("/results/last").set("Authorization", `ApeKey ${apeKey}`),
       ).toBeRateLimited({ max: 30, windowMs: 60 * 1000 }); //should use defaultApeRateLimit
-    });
-  });
-  describe("deleteAll", () => {
-    const deleteAllMock = vi.spyOn(ResultDal, "deleteAll");
-    const logToDbMock = vi.spyOn(LogsDal, "addLog");
-    afterEach(() => {
-      deleteAllMock.mockReset();
-      logToDbMock.mockReset();
-    });
-
-    it("should delete", async () => {
-      //GIVEN
-      verifyIdTokenMock.mockResolvedValue({
-        ...mockDecodedToken,
-        iat: Date.now() - 1000,
-      });
-      //WHEN
-      const { body } = await mockApp
-        .delete("/results")
-        .set("Authorization", `Bearer ${uid}`)
-        .send()
-        .expect(200);
-
-      //THEN
-      expect(body.message).toEqual("All results deleted");
-      expect(body.data).toBeNull();
-
-      expect(deleteAllMock).toHaveBeenCalledWith(uid);
-      expect(logToDbMock).toHaveBeenCalledWith("user_results_deleted", "", uid);
-    });
-    it("should fail to delete with non-fresh token", async () => {
-      await mockApp
-        .delete("/results")
-        .set("Authorization", `Bearer ${uid}`)
-        .send()
-        .expect(401);
     });
   });
   describe("updateTags", () => {
@@ -468,7 +418,7 @@ describe("result controller test", () => {
         updateTagsMock,
         getUserPartialMock,
         checkIfTagPbMock,
-      ].forEach((it) => it.mockReset());
+      ].forEach((it) => it.mockClear());
     });
 
     it("should update tags", async () => {
@@ -508,15 +458,14 @@ describe("result controller test", () => {
     it("should apply defaults on missing data", async () => {
       //GIVEN
       const result = givenDbResult(uid);
-      const partialResult = omit(
-        result,
+      const partialResult = omit(result, [
         "difficulty",
         "language",
         "funbox",
         "lazyMode",
         "punctuation",
-        "numbers"
-      );
+        "numbers",
+      ]);
 
       const resultIdString = result._id.toHexString();
       const tagIds = [
@@ -551,7 +500,7 @@ describe("result controller test", () => {
         ...result,
         difficulty: "normal",
         language: "english",
-        funbox: "none",
+        funbox: [],
         lazyMode: false,
         punctuation: false,
         numbers: false,
@@ -597,69 +546,57 @@ describe("result controller test", () => {
   describe("addResult", () => {
     //TODO improve test coverage for addResult
     const insertedId = new ObjectId();
-    const getUserMock = vi.spyOn(UserDal, "getUser");
-    const updateStreakMock = vi.spyOn(UserDal, "updateStreak");
-    const checkIfTagPbMock = vi.spyOn(UserDal, "checkIfTagPb");
-    const addResultMock = vi.spyOn(ResultDal, "addResult");
+    const userGetMock = vi.spyOn(UserDal, "getUser");
+    const userUpdateStreakMock = vi.spyOn(UserDal, "updateStreak");
+    const userCheckIfTagPbMock = vi.spyOn(UserDal, "checkIfTagPb");
+    const userCheckIfPbMock = vi.spyOn(UserDal, "checkIfPb");
+    const userIncrementXpMock = vi.spyOn(UserDal, "incrementXp");
+    const userUpdateTypingStatsMock = vi.spyOn(UserDal, "updateTypingStats");
+    const resultAddMock = vi.spyOn(ResultDal, "addResult");
+    const resultGetLastTimestampMock = vi.spyOn(
+      ResultDal,
+      "getLastResultTimestamp",
+    );
+    const publicUpdateStatsMock = vi.spyOn(PublicDal, "updateStats");
 
     beforeEach(async () => {
       await enableResultsSaving(true);
+      await enableUsersXpGain(true);
 
-      [getUserMock, updateStreakMock, checkIfTagPbMock, addResultMock].forEach(
-        (it) => it.mockReset()
-      );
+      [
+        userGetMock,
+        userUpdateStreakMock,
+        userCheckIfTagPbMock,
+        userCheckIfPbMock,
+        userIncrementXpMock,
+        userUpdateTypingStatsMock,
+        resultAddMock,
+        resultGetLastTimestampMock,
+        publicUpdateStatsMock,
+      ].forEach((it) => it.mockClear());
 
-      getUserMock.mockResolvedValue({ name: "bob" } as any);
-      updateStreakMock.mockResolvedValue(0);
-      checkIfTagPbMock.mockResolvedValue([]);
-      addResultMock.mockResolvedValue({ insertedId });
+      userGetMock.mockResolvedValue({ name: "bob" } as any);
+      userUpdateStreakMock.mockResolvedValue(0);
+      userCheckIfTagPbMock.mockResolvedValue([]);
+      userCheckIfPbMock.mockResolvedValue(true);
+      resultAddMock.mockResolvedValue({ insertedId });
+      //a prior result exists so incomplete-test time is credited (not zeroed)
+      resultGetLastTimestampMock.mockResolvedValue(0);
+      userIncrementXpMock.mockResolvedValue();
     });
 
     it("should add result", async () => {
       //GIVEN
 
+      const completedEvent = buildCompletedEvent({
+        funbox: ["58008", "read_ahead_hard"],
+      });
       //WHEN
       const { body } = await mockApp
         .post("/results")
         .set("Authorization", `Bearer ${uid}`)
         .send({
-          result: {
-            acc: 86,
-            afkDuration: 5,
-            bailedOut: false,
-            blindMode: false,
-            charStats: [100, 2, 3, 5],
-            chartData: { wpm: [1, 2, 3], raw: [50, 55, 56], err: [0, 2, 0] },
-            consistency: 23.5,
-            difficulty: "normal",
-            funbox: "none",
-            hash: "hash",
-            incompleteTestSeconds: 2,
-            incompleteTests: [{ acc: 75, seconds: 10 }],
-            keyConsistency: 12,
-            keyDuration: [0, 3, 5],
-            keySpacing: [0, 2, 4],
-            language: "english",
-            lazyMode: false,
-            mode: "time",
-            mode2: "15",
-            numbers: false,
-            punctuation: false,
-            rawWpm: 99,
-            restartCount: 4,
-            tags: ["tagOneId", "tagTwoId"],
-            testDuration: 15.1,
-            timestamp: 1000,
-            uid,
-            wpmConsistency: 55,
-            wpm: 80,
-            stopOnLetter: false,
-            //new required
-            charTotal: 5,
-            keyOverlap: 7,
-            lastKeyToEnd: 9,
-            startToFirstKey: 11,
-          },
+          result: completedEvent,
         })
         .expect(200);
 
@@ -669,12 +606,19 @@ describe("result controller test", () => {
         tagPbs: [],
         xp: 0,
         dailyXpBonus: false,
-        xpBreakdown: {},
+        xpBreakdown: {
+          configMultiplier: 0,
+          accPenalty: 28,
+          base: 20,
+          incomplete: 5,
+          funbox: 80,
+          daily: 0,
+        },
         streak: 0,
         insertedId: insertedId.toHexString(),
       });
 
-      expect(addResultMock).toHaveBeenCalledWith(
+      expect(resultAddMock).toHaveBeenCalledWith(
         uid,
         expect.objectContaining({
           acc: 86,
@@ -682,7 +626,7 @@ describe("result controller test", () => {
           charStats: [100, 2, 3, 5],
           chartData: {
             err: [0, 2, 0],
-            raw: [50, 55, 56],
+            burst: [50, 55, 56],
             wpm: [1, 2, 3],
           },
           consistency: 23.5,
@@ -704,9 +648,20 @@ describe("result controller test", () => {
           restartCount: 4,
           tags: ["tagOneId", "tagTwoId"],
           testDuration: 15.1,
-          uid: "123456",
+          uid: uid,
           wpm: 80,
-        })
+        }),
+      );
+
+      expect(publicUpdateStatsMock).toHaveBeenCalledWith(
+        4,
+        15.1 + 2 - 5, //duration + incompleteTestSeconds-afk
+      );
+      expect(userIncrementXpMock).toHaveBeenCalledWith(uid, 0);
+      expect(userUpdateTypingStatsMock).toHaveBeenCalledWith(
+        uid,
+        4,
+        15.1 + 2 - 5, //duration + incompleteTestSeconds-afk
       );
     });
     it("should fail if result saving is disabled", async () => {
@@ -747,44 +702,9 @@ describe("result controller test", () => {
         .post("/results")
         .set("Authorization", `Bearer ${uid}`)
         .send({
-          result: {
-            acc: 86,
-            afkDuration: 5,
-            bailedOut: false,
-            blindMode: false,
-            charStats: [100, 2, 3, 5],
-            chartData: { wpm: [1, 2, 3], raw: [50, 55, 56], err: [0, 2, 0] },
-            consistency: 23.5,
-            difficulty: "normal",
-            funbox: "none",
-            hash: "hash",
-            incompleteTestSeconds: 2,
-            incompleteTests: [{ acc: 75, seconds: 10 }],
-            keyConsistency: 12,
-            keyDuration: [0, 3, 5],
-            keySpacing: [0, 2, 4],
-            language: "english",
-            lazyMode: false,
-            mode: "time",
-            mode2: "15",
-            numbers: false,
-            punctuation: false,
-            rawWpm: 99,
-            restartCount: 4,
-            tags: ["tagOneId", "tagTwoId"],
-            testDuration: 15.1,
-            timestamp: 1000,
-            uid,
-            wpmConsistency: 55,
-            wpm: 80,
-            stopOnLetter: false,
-            //new required
-            charTotal: 5,
-            keyOverlap: 7,
-            lastKeyToEnd: 9,
-            startToFirstKey: 11,
+          result: buildCompletedEvent({
             extra2: "value",
-          },
+          } as any),
           extra: "value",
         })
         .expect(422);
@@ -799,36 +719,92 @@ describe("result controller test", () => {
       });
     });
 
-    it("should fail invalid properties", async () => {
+    it("should fail wit duplicate funboxes", async () => {
       //GIVEN
 
       //WHEN
       const { body } = await mockApp
         .post("/results")
         .set("Authorization", `Bearer ${uid}`)
-        //TODO add all properties
-        .send({ result: { acc: 25 } })
-        .expect(422);
+        .send({
+          result: buildCompletedEvent({
+            funbox: ["58008", "58008"],
+          }),
+        })
+        .expect(400);
 
       //THEN
-      /*
+      expect(body.message).toEqual("Duplicate funboxes");
+    });
+
+    // it("should fail invalid properties ", async () => {
+    //GIVEN
+    //WHEN
+    // const { body } = await mockApp
+    //   .post("/results")
+    //   .set("Authorization", `Bearer ${uid}`)
+    //   //TODO add all properties
+    //   .send({ result: { acc: 25 } })
+    //   .expect(422);
+    //THEN
+    /*
       expect(body).toEqual({
         message: "Invalid request data schema",
         validationErrors: [
         ],
       });
       */
-    });
+    // });
   });
 });
 
-async function enablePremiumFeatures(premium: boolean): Promise<void> {
-  const mockConfig = _.merge(await configuration, {
-    users: { premium: { enabled: premium } },
-  });
+function buildCompletedEvent(result?: Partial<CompletedEvent>): CompletedEvent {
+  return {
+    acc: 86,
+    afkDuration: 5,
+    bailedOut: false,
+    blindMode: false,
+    charStats: [100, 2, 3, 5],
+    chartData: { wpm: [1, 2, 3], burst: [50, 55, 56], err: [0, 2, 0] },
+    consistency: 23.5,
+    difficulty: "normal",
+    funbox: [],
+    hash: "hash",
+    incompleteTestSeconds: 2,
+    incompleteTests: [{ acc: 75, seconds: 10 }],
+    keyConsistency: 12,
+    keyDuration: [0, 3, 5],
+    keySpacing: [0, 2, 4],
+    language: "english",
+    lazyMode: false,
+    mode: "time",
+    mode2: "15",
+    numbers: false,
+    punctuation: false,
+    rawWpm: 99,
+    restartCount: 4,
+    tags: ["tagOneId", "tagTwoId"],
+    testDuration: 15.1,
+    timestamp: 1000,
+    uid,
+    wpmConsistency: 55,
+    wpm: 80,
+    stopOnLetter: false,
+    //new required
+    charTotal: 5,
+    keyOverlap: 7,
+    lastKeyToEnd: 9,
+    startToFirstKey: 11,
+    ...result,
+  };
+}
+
+async function enablePremiumFeatures(enabled: boolean): Promise<void> {
+  const mockConfig = await configuration;
+  mockConfig.users.premium = { ...mockConfig.users.premium, enabled };
 
   vi.spyOn(Configuration, "getCachedConfiguration").mockResolvedValue(
-    mockConfig
+    mockConfig,
   );
 }
 function givenDbResult(uid: string, customize?: Partial<DBResult>): DBResult {
@@ -855,7 +831,7 @@ function givenDbResult(uid: string, customize?: Partial<DBResult>): DBResult {
     isPb: true,
     chartData: {
       wpm: [Math.random() * 100],
-      raw: [Math.random() * 100],
+      burst: [Math.random() * 100],
       err: [Math.random() * 100],
     },
     name: "testName",
@@ -864,21 +840,30 @@ function givenDbResult(uid: string, customize?: Partial<DBResult>): DBResult {
 }
 
 async function acceptApeKeys(enabled: boolean): Promise<void> {
-  const mockConfig = _.merge(await configuration, {
-    apeKeys: { acceptKeys: enabled },
-  });
+  const mockConfig = await configuration;
+  mockConfig.apeKeys = {
+    ...mockConfig.apeKeys,
+    acceptKeys: enabled,
+  };
 
   vi.spyOn(Configuration, "getCachedConfiguration").mockResolvedValue(
-    mockConfig
+    mockConfig,
   );
 }
 
 async function enableResultsSaving(enabled: boolean): Promise<void> {
-  const mockConfig = _.merge(await configuration, {
-    results: { savingEnabled: enabled },
-  });
+  const mockConfig = await configuration;
+  mockConfig.results = { ...mockConfig.results, savingEnabled: enabled };
 
   vi.spyOn(Configuration, "getCachedConfiguration").mockResolvedValue(
-    mockConfig
+    mockConfig,
+  );
+}
+async function enableUsersXpGain(enabled: boolean): Promise<void> {
+  const mockConfig = await configuration;
+  mockConfig.users.xp = { ...mockConfig.users.xp, enabled, funboxBonus: 1 };
+
+  vi.spyOn(Configuration, "getCachedConfiguration").mockResolvedValue(
+    mockConfig,
   );
 }
