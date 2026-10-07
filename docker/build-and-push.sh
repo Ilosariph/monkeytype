@@ -32,6 +32,15 @@ TAG="${2:-$(git -C "$ROOT" rev-parse --short HEAD)}"
 PLATFORMS="${PLATFORMS:-linux/amd64}"
 SERVER_VERSION="$(git -C "$ROOT" describe --tags --always 2>/dev/null || echo "$TAG")"
 
+# the default docker builder can't build multiple platforms at once
+BUILDER_ARGS=()
+if [[ "$PLATFORMS" == *,* ]]; then
+  if ! docker buildx inspect monkeytype-builder >/dev/null 2>&1; then
+    docker buildx create --name monkeytype-builder --driver docker-container >/dev/null
+  fi
+  BUILDER_ARGS=(--builder monkeytype-builder)
+fi
+
 build_and_push() {
   local name="$1"
   shift
@@ -39,6 +48,7 @@ build_and_push() {
 
   echo "==> Building and pushing $image:$TAG ($PLATFORMS)"
   docker buildx build \
+    ${BUILDER_ARGS[@]+"${BUILDER_ARGS[@]}"} \
     --platform "$PLATFORMS" \
     --file "$ROOT/docker/${name#monkeytype-}/Dockerfile" \
     --tag "$image:$TAG" \
